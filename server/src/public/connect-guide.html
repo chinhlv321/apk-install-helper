@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADB Wireless Connect Guide</title>
+  <style>
+    :root {
+      --bg-color: #121214;
+      --card-bg: #1e1e24;
+      --primary: #6366f1;
+      --text-main: #f3f4f6;
+      --text-sub: #9ca3af;
+      --accent: #10b981;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    .container {
+      background-color: var(--card-bg);
+      border-radius: 1rem;
+      padding: 2rem;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+      border: 1px solid #2e2e38;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #a78bfa, var(--primary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--text-sub);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.4;
+    }
+
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .step {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+    }
+
+    .step-number {
+      background-color: var(--primary);
+      color: white;
+      font-weight: bold;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 0.9rem;
+    }
+
+    .step-content {
+      line-height: 1.5;
+    }
+
+    .step-title {
+      font-weight: 600;
+      margin-bottom: 0.2rem;
+    }
+
+    .step-desc {
+      color: var(--text-sub);
+      font-size: 0.85rem;
+    }
+
+    .code-block {
+      background-color: rgba(0,0,0,0.3);
+      border: 1px dashed #4b5563;
+      padding: 0.6rem;
+      border-radius: 0.4rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      margin-top: 0.4rem;
+      color: var(--accent);
+      word-break: break-all;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 2rem;
+      font-size: 0.8rem;
+      color: var(--text-sub);
+      border-top: 1px solid #2e2e38;
+      padding-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ADB Wireless Connection Guide</h1>
+    <p class="subtitle">Follow these steps on your phone to connect to this machine wirelessly.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">Connect to same WiFi</div>
+          <div class="step-desc">Make sure your phone and this computer are connected to the exact same Wi-Fi network.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">Enable Developer Options</div>
+          <div class="step-desc">Go to Settings > About Phone. Tap <b>Build Number</b> 7 times until you see "Developer mode enabled".</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Turn on Wireless Debugging</div>
+          <div class="step-desc">Go to Settings > System > Developer Options. Enable <b>Wireless Debugging</b>.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">Find Pairing Info</div>
+          <div class="step-desc">Tap on "Wireless Debugging" to enter settings. Choose <b>"Pair device with pairing code"</b>. Note down the IP address, Port, and 6-digit Code.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">5</div>
+        <div class="step-content">
+          <div class="step-title">Submit on PC Web App</div>
+          <div class="step-desc">Enter the IP, Port, and Code in the PC browser dashboard to complete the wireless pairing process.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      APK Install Helper &bull; Running on local network
+    </div>
+  </div>
+</body>
+</html>

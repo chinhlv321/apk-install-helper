@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download APK</title>
+  <style>
+    :root {
+      --bg-color: #121214;
+      --card-bg: #1e1e24;
+      --primary: #10b981;
+      --primary-hover: #059669;
+      --text-main: #f3f4f6;
+      --text-sub: #9ca3af;
+      --border: #2e2e38;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 1rem;
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 450px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .icon-box {
+      width: 72px;
+      height: 72px;
+      background-color: rgba(16, 185, 129, 0.1);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+      border: 2px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .icon {
+      width: 36px;
+      height: 36px;
+      fill: var(--primary);
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 0.5rem;
+      font-weight: 700;
+    }
+
+    .apk-name {
+      font-size: 1.1rem;
+      color: var(--text-main);
+      font-weight: 500;
+      word-break: break-all;
+      margin: 0.5rem 0 1.5rem 0;
+      padding: 0.6rem;
+      background-color: rgba(0, 0, 0, 0.2);
+      border-radius: 0.5rem;
+      width: 100%;
+      border: 1px solid var(--border);
+    }
+
+    .apk-meta {
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      margin-bottom: 2rem;
+    }
+
+    .download-btn {
+      background-color: var(--primary);
+      color: #000;
+      color: white;
+      font-weight: 600;
+      padding: 0.8rem 2rem;
+      border-radius: 0.5rem;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      width: 100%;
+      display: inline-block;
+      box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);
+    }
+
+    .download-btn:hover {
+      background-color: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .download-btn:active {
+      transform: translateY(0);
+    }
+
+    .error-msg {
+      color: #ef4444;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer {
+      margin-top: 2rem;
+      font-size: 0.8rem;
+      color: var(--text-sub);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-box">
+      <!-- Android Icon -->
+      <svg class="icon" viewBox="0 0 24 24">
+        <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-5-5.8L16.8 3.7c.18-.18.18-.47 0-.65a.465.465 0 0 0-.65 0L14.7 4.5C13.88 4.19 12.97 4 12 4s-1.88.19-2.7.5L7.85 3.05a.465.465 0 0 0-.65 0c-.18.18-.18.47 0 .65l1.3 1.3C6.73 6.13 5.42 7.9 5.09 10h13.82c-.33-2.1-1.64-3.87-3.41-5zM9 8c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm6 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/>
+      </svg>
+    </div>
+
+    <h1>Ready to Install</h1>
+    <p class="apk-meta">Your Android package is ready for download.</p>
+    
+    <div id="apk-details" style="width: 100%;">
+      <div class="apk-name" id="filename-text">Loading APK...</div>
+      <a href="#" class="download-btn" id="download-link">Download APK File</a>
+    </div>
+
+    <div id="error-details" style="display: none; width: 100%;">
+      <p class="error-msg">No APK file specified or file invalid.</p>
+    </div>
+
+    <div class="footer">
+      APK Install Helper &bull; Cross-network transfer active
+    </div>
+  </div>
+
+  <script>
+    // Get query params
+    const params = new URLSearchParams(window.location.search);
+    const filename = params.get('file');
+
+    const filenameText = document.getElementById('filename-text');
+    const downloadLink = document.getElementById('download-link');
+    const apkDetails = document.getElementById('apk-details');
+    const errorDetails = document.getElementById('error-details');
+
+    if (filename) {
+      // Decode original name: format is typically <timestamp>-<random>-<originalName>
+      const parts = filename.split('-');
+      let originalName = filename;
+      if (parts.length >= 3) {
+        // join remaining elements
+        originalName = parts.slice(2).join('-');
+      }
+
+      filenameText.textContent = originalName;
+      // Truncate long names for UI
+      if (originalName.length > 30) {
+        filenameText.title = originalName;
+        filenameText.textContent = originalName.substring(0, 27) + '...';
+      }
+
+      downloadLink.href = `/api/apk/download/${filename}`;
+    } else {
+      apkDetails.style.display = 'none';
+      errorDetails.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
