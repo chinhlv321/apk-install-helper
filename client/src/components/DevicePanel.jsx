@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
+import io from 'socket.io-client';
 import { 
   Smartphone, Wifi, WifiOff, Plus, Trash2, 
   Bookmark, RefreshCw, QrCode, HelpCircle, Check 
@@ -25,6 +26,9 @@ export default function DevicePanel({
   const [showQrModal, setShowQrModal] = useState(false);
   const [pairMethod, setPairMethod] = useState('qr'); // 'qr' or 'manual'
   const [pairQrType, setPairQrType] = useState('local'); // 'local' or 'cross'
+  const [pairingMode, setPairingMode] = useState('native'); // 'native' or 'web'
+  const [nativePairData, setNativePairData] = useState(null);
+  const [nativePairStatus, setNativePairStatus] = useState(null);
   const [guideTab, setGuideTab] = useState('pair'); // 'pair' or 'connect'
 
   // Form states
@@ -36,6 +40,59 @@ export default function DevicePanel({
   const serverUrl = serverInfo && serverInfo.localIps && serverInfo.localIps.length > 0 
     ? `http://${serverInfo.localIps[0]}:${serverInfo.port}` 
     : window.location.origin;
+
+  useEffect(() => {
+    if (!showPairModal || pairMethod !== 'qr' || pairingMode !== 'native') {
+      if (nativePairData) {
+        fetch('/api/devices/pair-qr/cancel', { method: 'POST' }).catch(() => {});
+        setNativePairData(null);
+        setNativePairStatus(null);
+      }
+      return;
+    }
+
+    let socket = null;
+
+    const startSession = async () => {
+      try {
+        const res = await fetch('/api/devices/pair-qr/start', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          setNativePairData(data);
+          setNativePairStatus({ status: 'waiting', message: 'Đang chờ thiết bị quét mã QR...' });
+
+          socket = io(window.location.origin);
+          
+          socket.on('pair:status', (update) => {
+            if (update.serviceName === data.serviceName) {
+              setNativePairStatus(update);
+              
+              if (update.status === 'success') {
+                showToast('Ghép đôi và kết nối thành công!', 'success');
+                fetchDevices();
+                setTimeout(() => {
+                  setShowPairModal(false);
+                }, 2000);
+              }
+            }
+          });
+        } else {
+          showToast(data.error || 'Không thể khởi động QR Pairing', 'error');
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối server', 'error');
+      }
+    };
+
+    startSession();
+
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+      fetch('/api/devices/pair-qr/cancel', { method: 'POST' }).catch(() => {});
+    };
+  }, [showPairModal, pairMethod, pairingMode]);
 
   const fetchDevices = async () => {
     setLoading(true);
@@ -489,106 +546,226 @@ export default function DevicePanel({
               </button>
             </div>
 
-            {pairMethod === 'qr' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '0.75rem' }}>
-                {/* Warning box */}
-                <div style={{
-                  width: '100%',
-                  padding: '0.6rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid var(--danger)',
-                  color: 'var(--danger)',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  textAlign: 'left'
-                }}>
-                  ⚠️ KHÔNG dùng nút "Pair device with QR code" trong Android Settings — nút đó chỉ hoạt động với Android Studio.
-                </div>
-                
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'left', lineHeight: '1.6' }}>
-                  <b>Bước 1:</b> Trên điện thoại, vào <b>Developer Options &gt; Wireless debugging &gt; Pair device with pairing code</b> (ghép đôi bằng mã).<br/>
-                  <b>Bước 2:</b> Dùng <b>Camera, Zalo, hoặc Google Lens</b> quét mã QR bên dưới để mở trang nhập thông tin.<br/>
-                  <b>Bước 3:</b> Nhập Port và Mã PIN 6 số từ màn hình điện thoại vào trang web.
-                </p>
-
-                {/* Tabs for QR Local/Ngrok */}
-                <div style={{ display: 'flex', width: '100%', border: '1px solid var(--border)', borderRadius: '0.375rem', overflow: 'hidden', margin: '0.5rem 0' }}>
-                  <button 
-                    type="button"
-                    onClick={() => setPairQrType('local')}
-                    style={{
-                      flex: 1,
-                      padding: '0.4rem',
-                      border: 'none',
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      backgroundColor: pairQrType === 'local' ? 'var(--primary-light)' : 'transparent',
-                      color: pairQrType === 'local' ? 'var(--primary)' : 'var(--text-secondary)'
-                    }}
-                  >
-                    Mạng Wi-Fi (LAN)
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setPairQrType('cross')}
-                    style={{
-                      flex: 1,
-                      padding: '0.4rem',
-                      border: 'none',
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      backgroundColor: pairQrType === 'cross' ? 'var(--primary-light)' : 'transparent',
-                      color: pairQrType === 'cross' ? 'var(--primary)' : 'var(--text-secondary)'
-                    }}
-                  >
-                    Internet (Ngrok)
-                  </button>
-                </div>
-
-                {/* QR Display */}
-                {pairQrType === 'local' ? (
-                  <>
-                    <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
-                      <QRCodeSVG value={`${serverUrl}/pair-mobile`} size={180} />
-                    </div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                      {serverUrl}/pair-mobile
-                    </span>
-                  </>
-                ) : tunnelActive && tunnelUrl ? (
-                  <>
-                    <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
-                      <QRCodeSVG value={`${tunnelUrl}/pair-mobile`} size={180} />
-                    </div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                      {tunnelUrl}/pair-mobile
-                    </span>
-                  </>
-                ) : (
-                  <div style={{
-                    width: '180px',
-                    height: '180px',
-                    border: '1px dashed var(--border)',
-                    borderRadius: '0.5rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '1rem',
-                    color: 'var(--text-secondary)',
+            {/* Pairing Mode Select: Native vs Web Fallback */}
+            {pairMethod === 'qr' && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', width: '100%' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setPairingMode('native')}
+                  style={{
+                    flex: 1,
+                    padding: '0.4rem',
+                    border: 'none',
+                    borderRadius: '0.25rem',
                     fontSize: '0.75rem',
-                    margin: '0.25rem 0'
-                  }}>
-                    Chưa bật Ngrok. Hãy cấu hình & bật Ngrok trong tab Cài đặt để kết nối ngoài mạng.
-                  </div>
-                )}
-                
-                <button type="button" onClick={() => setShowPairModal(false)} className="btn btn-secondary" style={{ width: '100%', marginTop: '0.5rem' }}>
-                  {t('common.close')}
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    backgroundColor: pairingMode === 'native' ? 'var(--primary)' : 'var(--bg-app)',
+                    color: pairingMode === 'native' ? '#fff' : 'var(--text-secondary)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Native QR (Android Studio)
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setPairingMode('web')}
+                  style={{
+                    flex: 1,
+                    padding: '0.4rem',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    backgroundColor: pairingMode === 'web' ? 'var(--primary)' : 'var(--bg-app)',
+                    color: pairingMode === 'web' ? '#fff' : 'var(--text-secondary)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Web QR (Zalo/Camera fallback)
                 </button>
               </div>
+            )}
+
+            {pairMethod === 'qr' ? (
+              pairingMode === 'native' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '0.75rem', width: '100%' }}>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'left', lineHeight: '1.5', width: '100%' }}>
+                    <b>Bước 1:</b> Trên điện thoại, vào <b>Gỡ lỗi không dây (Wireless debugging)</b>.<br/>
+                    <b>Bước 2:</b> Chọn <b>Ghép nối thiết bị bằng mã QR (Pair device with QR code)</b>.<br/>
+                    <b>Bước 3:</b> Chĩa máy ảnh ghép đôi quét trực tiếp mã QR dưới đây.
+                  </p>
+
+                  <div style={{
+                    width: '100%',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.375rem',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid #f59e0b',
+                    color: '#d97706',
+                    fontSize: '0.72rem',
+                    textAlign: 'left',
+                    lineHeight: '1.4'
+                  }}>
+                    💡 <b>Yêu cầu quan trọng:</b> PC và điện thoại phải kết nối <b>chung Wi-Fi (LAN)</b>. Cách này KHÔNG hoạt động qua mạng khác (Ngrok/Internet) vì mDNS bị chặn. Nếu điện thoại xoay xoay quá lâu không kết nối, hãy chọn tab <b>Web QR</b> ở trên để ghép đôi vòng qua Internet.
+                  </div>
+
+                  {nativePairData ? (
+                    <>
+                      <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
+                        <QRCodeSVG value={nativePairData.qrPayload} size={180} />
+                      </div>
+                      
+                      {/* Real-time Status Area */}
+                      {nativePairStatus && (
+                        <div style={{
+                          width: '100%',
+                          padding: '0.6rem 0.75rem',
+                          borderRadius: '0.375rem',
+                          backgroundColor: 
+                            nativePairStatus.status === 'success' ? 'rgba(34, 197, 94, 0.1)' :
+                            nativePairStatus.status === 'error' ? 'rgba(239, 68, 68, 0.1)' :
+                            'rgba(59, 130, 246, 0.1)',
+                          border: `1px solid ${
+                            nativePairStatus.status === 'success' ? 'var(--success)' :
+                            nativePairStatus.status === 'error' ? 'var(--danger)' :
+                            'var(--primary)'
+                          }`,
+                          color: 
+                            nativePairStatus.status === 'success' ? 'var(--success)' :
+                            nativePairStatus.status === 'error' ? 'var(--danger)' :
+                            'var(--text-primary)',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          textAlign: 'center'
+                        }}>
+                          {nativePairStatus.status === 'waiting' && '🔄 ' + nativePairStatus.message}
+                          {nativePairStatus.status === 'discovered' && '🔍 ' + nativePairStatus.message}
+                          {nativePairStatus.status === 'pairing' && '🔑 ' + nativePairStatus.message}
+                          {nativePairStatus.status === 'paired' && '🎉 ' + nativePairStatus.message}
+                          {nativePairStatus.status === 'connecting' && '🔌 ' + nativePairStatus.message}
+                          {nativePairStatus.status === 'success' && '✅ ' + nativePairStatus.message}
+                          {nativePairStatus.status === 'error' && '❌ ' + (nativePairStatus.error || 'Lỗi ghép đôi.')}
+                        </div>
+                      )}
+                      
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                        Service Name: {nativePairData.serviceName} | PIN: {nativePairData.password}
+                      </span>
+                    </>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '180px', gap: '0.5rem' }}>
+                      <RefreshCw className="animate-spin" size={24} style={{ color: 'var(--primary)' }} />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Đang tạo mã QR...</span>
+                    </div>
+                  )}
+
+                  <button type="button" onClick={() => setShowPairModal(false)} className="btn btn-secondary" style={{ width: '100%', marginTop: '0.5rem' }}>
+                    {t('common.close')}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '0.75rem', width: '100%' }}>
+                  {/* Warning box */}
+                  <div style={{
+                    width: '100%',
+                    padding: '0.6rem 0.75rem',
+                    borderRadius: '0.375rem',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid var(--danger)',
+                    color: 'var(--danger)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    textAlign: 'left'
+                  }}>
+                    ⚠️ KHÔNG dùng nút "Pair device with QR code" trong Android Settings — nút đó chỉ hoạt động với Android Studio.
+                  </div>
+                  
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'left', lineHeight: '1.6' }}>
+                    <b>Bước 1:</b> Trên điện thoại, vào <b>Wireless debugging &gt; Pair device with pairing code</b> (ghép đôi bằng mã).<br/>
+                    <b>Bước 2:</b> Dùng <b>Camera, Zalo, hoặc Google Lens</b> quét mã QR bên dưới để mở trang nhập thông tin.<br/>
+                    <b>Bước 3:</b> Nhập Port và Mã PIN 6 số từ màn hình điện thoại vào trang web.
+                  </p>
+
+                  {/* Tabs for QR Local/Ngrok */}
+                  <div style={{ display: 'flex', width: '100%', border: '1px solid var(--border)', borderRadius: '0.375rem', overflow: 'hidden', margin: '0.5rem 0' }}>
+                    <button 
+                      type="button"
+                      onClick={() => setPairQrType('local')}
+                      style={{
+                        flex: 1,
+                        padding: '0.4rem',
+                        border: 'none',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        backgroundColor: pairQrType === 'local' ? 'var(--primary-light)' : 'transparent',
+                        color: pairQrType === 'local' ? 'var(--primary)' : 'var(--text-secondary)'
+                      }}
+                    >
+                      Mạng Wi-Fi (LAN)
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setPairQrType('cross')}
+                      style={{
+                        flex: 1,
+                        padding: '0.4rem',
+                        border: 'none',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        backgroundColor: pairQrType === 'cross' ? 'var(--primary-light)' : 'transparent',
+                        color: pairQrType === 'cross' ? 'var(--primary)' : 'var(--text-secondary)'
+                      }}
+                    >
+                      Internet (Ngrok)
+                    </button>
+                  </div>
+
+                  {/* QR Display */}
+                  {pairQrType === 'local' ? (
+                    <>
+                      <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
+                        <QRCodeSVG value={`${serverUrl}/pair-mobile`} size={180} />
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                        {serverUrl}/pair-mobile
+                      </span>
+                    </>
+                  ) : tunnelActive && tunnelUrl ? (
+                    <>
+                      <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
+                        <QRCodeSVG value={`${tunnelUrl}/pair-mobile`} size={180} />
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                        {tunnelUrl}/pair-mobile
+                      </span>
+                    </>
+                  ) : (
+                    <div style={{
+                      width: '180px',
+                      height: '180px',
+                      border: '1px dashed var(--border)',
+                      borderRadius: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '1rem',
+                      color: 'var(--text-secondary)',
+                      fontSize: '0.75rem',
+                      margin: '0.25rem 0'
+                    }}>
+                      Chưa bật Ngrok. Hãy cấu hình & bật Ngrok trong tab Cài đặt để kết nối ngoài mạng.
+                    </div>
+                  )}
+                  
+                  <button type="button" onClick={() => setShowPairModal(false)} className="btn btn-secondary" style={{ width: '100%', marginTop: '0.5rem' }}>
+                    {t('common.close')}
+                  </button>
+                </div>
+              )
             ) : (
               <form onSubmit={handlePair}>
                 <div className="form-group">

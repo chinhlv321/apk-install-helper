@@ -1,11 +1,35 @@
 const express = require('express');
 const router = express.Router();
 const ngrok = require('@ngrok/ngrok');
+const fs = require('fs');
+const path = require('path');
 const { PORT, NGROK_AUTHTOKEN } = require('../config');
+
+const NGROK_CONFIG_FILE = path.join(__dirname, '..', '..', 'ngrok.json');
+
+function loadNgrokToken() {
+  try {
+    if (fs.existsSync(NGROK_CONFIG_FILE)) {
+      const config = JSON.parse(fs.readFileSync(NGROK_CONFIG_FILE, 'utf8'));
+      return config.authtoken || NGROK_AUTHTOKEN;
+    }
+  } catch (err) {
+    console.error('Failed to load ngrok token:', err);
+  }
+  return NGROK_AUTHTOKEN;
+}
+
+function saveNgrokToken(token) {
+  try {
+    fs.writeFileSync(NGROK_CONFIG_FILE, JSON.stringify({ authtoken: token }, null, 2));
+  } catch (err) {
+    console.error('Failed to save ngrok token:', err);
+  }
+}
 
 let currentListener = null;
 let currentUrl = null;
-let activeAuthToken = NGROK_AUTHTOKEN;
+let activeAuthToken = loadNgrokToken();
 let tunnelError = null;
 
 // Get tunnel status
@@ -27,6 +51,7 @@ router.post('/token', (req, res) => {
   }
 
   activeAuthToken = authtoken;
+  saveNgrokToken(authtoken);
   res.json({ success: true, message: 'Authtoken saved dynamically' });
 });
 
@@ -48,6 +73,7 @@ router.post('/start', async (req, res) => {
 
   // Update token
   activeAuthToken = tokenToUse;
+  saveNgrokToken(activeAuthToken);
 
   try {
     tunnelError = null;

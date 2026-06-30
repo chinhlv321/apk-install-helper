@@ -122,4 +122,24 @@ router.delete('/saved/:id', (req, res) => {
   res.json({ success: true, bookmarks });
 });
 
+// Start native QR pairing session
+router.post('/pair-qr/start', (req, res) => {
+  try {
+    const sessionData = adbService.startNativeQrPairing(req.io);
+    res.json({ success: true, ...sessionData });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Cancel active native QR pairing session
+router.post('/pair-qr/cancel', (req, res) => {
+  try {
+    adbService.cancelNativeQrPairing();
+    res.json({ success: true, message: 'QR Pairing cancelled' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

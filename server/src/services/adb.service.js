@@ -274,6 +274,193 @@ async function autoConnectMdns() {
   }
 }
 
+const crypto = require('crypto');
+const BonjourLib = require('bonjour-service');
+
+let activePairingSession = null;
+
+/**
+ * Start native ADB QR pairing session
+ */
+function startNativeQrPairing(io) {
+  // Cancel any existing session
+  cancelNativeQrPairing();
+
+  const serviceName = 'studio-' + crypto.randomBytes(4).toString('hex');
+  const password = crypto.randomInt(100000, 1000000).toString();
+  const qrPayload = `WIFI:T:ADB;S:${serviceName};P:${password};;`;
+
+  const session = {
+    serviceName,
+    password,
+    bonjour: null,
+    browser: null,
+    isCancelled: false,
+    intervalId: null,
+    timeoutId: null
+  };
+
+  activePairingSession = session;
+
+  const emitStatus = (status, details = {}) => {
+    if (session.isCancelled) return;
+    io.emit('pair:status', { status, serviceName, ...details });
+  };
+
+  emitStatus('waiting', { message: 'Đang chờ thiết bị quét mã QR...' });
+
+  const timeoutMs = 60000;
+
+  // 1. Bonjour discovery
+  try {
+    const bonjour = new BonjourLib.Bonjour();
+    session.bonjour = bonjour;
+    const browser = bonjour.find({ type: 'adb-tls-pairing', protocol: 'tcp' });
+    session.browser = browser;
+
+    browser.on('up', async (svc) => {
+      if (session.isCancelled) return;
+
+      const isMatch = svc.name === serviceName || 
+                      svc.name.includes(serviceName) || 
+                      (svc.fqdn && svc.fqdn.includes(serviceName));
+
+      if (!isMatch) return;
+
+      // Extract IP address
+      const ip = (svc.addresses || []).find(a => /^\d{1,3}(\.\d{1,3}){3}$/.test(a)) || svc.referer?.address;
+      if (ip && svc.port) {
+        await handleDeviceDiscovered(ip, svc.port);
+      }
+    });
+  } catch (err) {
+    console.error('[Pairing] Bonjour startup error:', err);
+  }
+
+  // 2. ADB mdns services fallback discovery (polling)
+  let startTime = Date.now();
+  session.intervalId = setInterval(async () => {
+    if (session.isCancelled) return;
+    if (Date.now() - startTime > timeoutMs) {
+      handleTimeout();
+      return;
+    }
+
+    try {
+      const res = await runAdbCommand(['mdns', 'services']);
+      if (!res.success) return;
+
+      for (const line of res.stdout.split('\n')) {
+        if (!line.includes('adb-tls-pairing')) continue;
+        if (!line.includes(serviceName)) continue;
+
+        const match = line.match(/(\d{1,3}(?:\.\d{1,3}){3})[\t :]+(\d+)/);
+        if (match) {
+          await handleDeviceDiscovered(match[1], match[2]);
+          return;
+        }
+      }
+    } catch (err) {
+      // Ignore transient errors
+    }
+  }, 1500);
+
+  // 3. Timeout handler
+  session.timeoutId = setTimeout(() => {
+    handleTimeout();
+  }, timeoutMs);
+
+  async function handleDeviceDiscovered(ip, port) {
+    if (session.isCancelled) return;
+    cleanupSession();
+
+    emitStatus('discovered', { ip, port, message: `Đã nhận diện thiết bị qua mDNS tại ${ip}:${port}` });
+    emitStatus('pairing', { ip, port, message: 'Đang tiến hành ghép đôi (adb pair)...' });
+    
+    const pairRes = await runAdbCommand(['pair', `${ip}:${port}`, password]);
+    if (!pairRes.success || pairRes.stdout.includes('Failed') || pairRes.stderr.includes('Failed')) {
+      emitStatus('error', { error: pairRes.stdout || pairRes.stderr || 'Ghép đôi thất bại.' });
+      return;
+    }
+
+    emitStatus('paired', { ip, message: 'Ghép đôi thành công! Đang quét cổng kết nối...' });
+    emitStatus('connecting', { ip, message: 'Đang kết nối thiết bị...' });
+
+    const connectPort = await autoDiscoverConnectPort(ip, 12000);
+    if (connectPort) {
+      const connectRes = await runAdbCommand(['connect', `${ip}:${connectPort}`]);
+      if (connectRes.success && !connectRes.stdout.includes('failed') && !connectRes.stdout.includes('unable')) {
+        emitStatus('success', { ip, port: connectPort, message: 'Kết nối thành công!' });
+      } else {
+        emitStatus('error', { error: `Ghép đôi thành công nhưng kết nối thất bại: ${connectRes.stdout}` });
+      }
+    } else {
+      emitStatus('error', { error: 'Không tìm thấy cổng kết nối tự động. Vui lòng kết nối thủ công.' });
+    }
+  }
+
+  function handleTimeout() {
+    if (session.isCancelled) return;
+    cleanupSession();
+    emitStatus('error', { error: 'Hết thời gian chờ. Đảm bảo thiết bị kết nối cùng Wi-Fi và quét đúng mã.' });
+  }
+
+  function cleanupSession() {
+    session.isCancelled = true;
+    if (session.timeoutId) clearTimeout(session.timeoutId);
+    if (session.intervalId) clearInterval(session.intervalId);
+    if (session.browser) {
+      try { session.browser.stop(); } catch (e) {}
+    }
+    if (session.bonjour) {
+      try { session.bonjour.destroy(); } catch (e) {}
+    }
+  }
+
+  return { serviceName, password, qrPayload };
+}
+
+/**
+ * Cancel the current pairing session
+ */
+function cancelNativeQrPairing() {
+  if (activePairingSession) {
+    activePairingSession.isCancelled = true;
+    if (activePairingSession.timeoutId) clearTimeout(activePairingSession.timeoutId);
+    if (activePairingSession.intervalId) clearInterval(activePairingSession.intervalId);
+    if (activePairingSession.browser) {
+      try { activePairingSession.browser.stop(); } catch (e) {}
+    }
+    if (activePairingSession.bonjour) {
+      try { activePairingSession.bonjour.destroy(); } catch (e) {}
+    }
+    activePairingSession = null;
+  }
+}
+
+/**
+ * Helper to discover connect port
+ */
+async function autoDiscoverConnectPort(ip, timeoutMs) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await runAdbCommand(['mdns', 'services']);
+      if (res.success) {
+        for (const line of res.stdout.split('\n')) {
+          if (!line.includes('adb-tls-connect')) continue;
+          const match = line.match(/(\d{1,3}(?:\.\d{1,3}){3})[\t :]+(\d+)/);
+          if (match && match[1] === ip) {
+            return match[2];
+          }
+        }
+      }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  return null;
+}
+
 module.exports = {
   listDevices,
   pairDevice,
@@ -282,5 +469,7 @@ module.exports = {
   installApk,
   startLogcatStream,
   stopLogcatStream,
-  autoConnectMdns
+  autoConnectMdns,
+  startNativeQrPairing,
+  cancelNativeQrPairing
 };

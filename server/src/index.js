@@ -15,6 +15,20 @@ const adbService = require('./services/adb.service');
 const app = express();
 const server = http.createServer(app);
 
+// Setup Socket.io earlier so we can share it with HTTP routes
+const io = socketIo(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+// Middleware to expose io to request
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 // Get local IP address(es)
 function getLocalIpAddresses() {
   const interfaces = os.networkInterfaces();
@@ -69,14 +83,6 @@ app.get('/api/info', (req, res) => {
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date() });
-});
-
-// Setup Socket.io
-const io = socketIo(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
 });
 
 // Wire sockets
