@@ -171,4 +171,15 @@ router.get('/:deviceId/processes', async (req, res) => {
   }
 });
 
+// Get third-party packages of a device
+router.get('/:deviceId/third-party-packages', async (req, res) => {
+  const { deviceId } = req.params;
+  try {
+    const packages = await adbService.getThirdPartyPackages(deviceId);
+    res.json({ success: true, packages });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

@@ -6,7 +6,8 @@
     "success": "Thành công",
     "warning": "Cảnh báo",
     "delete": "Xóa",
-    "save": "Lưu"
+    "save": "Lưu",
+    "loading": "Đang xử lý..."
   },
   "nav": {
     "logcat": "Trình xem Logcat",
@@ -65,6 +66,9 @@
     "export": "Xuất file Log",
     "auto_scroll": "Tự cuộn",
     "package_placeholder": "Lọc theo Package...",
+    "session": "Phiên",
+    "no_filter": "Không lọc",
+    "reset_filters": "Hiện tất cả package (Reset)",
     "select_device_warning": "Vui lòng chọn một thiết bị đang hoạt động từ danh sách bên trái để nhận log stream.",
     "no_logs": "Chưa nhận được log. Đảm bảo thiết bị đã bật chế độ gỡ lỗi và đang hoạt động.",
     "level": "Cấp độ log",

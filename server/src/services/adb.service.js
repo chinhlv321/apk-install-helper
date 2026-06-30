@@ -126,7 +126,8 @@ function installApk(deviceId, apkPath, onProgress) {
     });
 
     process.on('close', (code) => {
-      if (code === 0 && (output.includes('Success') || !errorOutput)) {
+      const isSuccess = code === 0 && !output.includes('Failure') && (output.includes('Success') || !errorOutput);
+      if (isSuccess) {
         resolve({ success: true, message: 'Installation successful' });
       } else {
         resolve({ success: false, error: errorOutput.trim() || output.trim() || `Install process exited with code ${code}` });
@@ -509,6 +510,50 @@ async function getProcessList(deviceId) {
   return processes;
 }
 
+/**
+ * Get the list of sideloaded/custom-installed packages on the device.
+ */
+async function getThirdPartyPackages(deviceId) {
+  // Use -i to fetch installer info and -3 to fetch third-party apps
+  const res = await runAdbCommand(['-s', deviceId, 'shell', 'pm', 'list', 'packages', '-i', '-3']);
+  if (!res.success) {
+    return [];
+  }
+  
+  const lines = res.stdout.split('\n');
+  const packages = [];
+  
+  // List of app store installers to exclude (Google Play, Mi Store, Samsung Store, etc.)
+  const blockedInstallers = [
+    'com.android.vending',
+    'com.xiaomi.discover',
+    'com.xiaomi.mipicks',
+    'com.facebook.system',
+    'com.facebook.services',
+    'android',
+    'com.sec.android.app.samsungapps',
+    'com.huawei.appmarket'
+  ];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('package:')) continue;
+    
+    // Format: package:com.example.app  installer=com.android.vending
+    // or package:com.example.app  installer=null
+    const match = trimmed.match(/^package:(.*?)\s+installer=(.*)$/);
+    if (match) {
+      const packageName = match[1].trim();
+      const installer = match[2].trim();
+      
+      if (!blockedInstallers.includes(installer)) {
+        packages.push(packageName);
+      }
+    }
+  }
+  return packages;
+}
+
 module.exports = {
   listDevices,
   pairDevice,
@@ -520,5 +565,6 @@ module.exports = {
   autoConnectMdns,
   startNativeQrPairing,
   cancelNativeQrPairing,
-  getProcessList
+  getProcessList,
+  getThirdPartyPackages
 };

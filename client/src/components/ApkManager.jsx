@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
+import io from 'socket.io-client';
 import { 
   UploadCloud, Smartphone, QrCode, Globe, 
   Wifi, HelpCircle, ArrowRight, RefreshCw, FileCode, Check 
@@ -19,6 +20,31 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo, tu
   const [showTailscaleGuide, setShowTailscaleGuide] = useState(false);
 
   const fileInputRef = useRef(null);
+  const socketRef = useRef(null);
+  const [installProgress, setInstallProgress] = useState({});
+
+  useEffect(() => {
+    // Connect to socket.io
+    socketRef.current = io(window.location.origin);
+
+    socketRef.current.on('apk:install-progress', (data) => {
+      if (data.filename) {
+        setInstallProgress(prev => ({
+          ...prev,
+          [data.filename]: {
+            progress: data.progress,
+            message: data.message
+          }
+        }));
+      }
+    });
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, []);
 
   const localIp = serverInfo && serverInfo.localIps && serverInfo.localIps.length > 0 
     ? serverInfo.localIps[0] 
@@ -147,6 +173,10 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo, tu
     }
 
     setInstallingFile(apk.filename);
+    setInstallProgress(prev => ({
+      ...prev,
+      [apk.filename]: { progress: 0, message: t('apk.installing') }
+    }));
     showToast(`${t('apk.installing')} ${apk.originalName}`, 'info');
 
     try {
@@ -161,11 +191,31 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo, tu
       const data = await res.json();
       if (data.success) {
         showToast(`${t('apk.install_success')} (${apk.originalName})`, 'success');
+        setInstallProgress(prev => ({
+          ...prev,
+          [apk.filename]: { progress: 100, message: t('apk.install_success') }
+        }));
+        // Auto clear after 3 seconds
+        setTimeout(() => {
+          setInstallProgress(prev => {
+            const next = { ...prev };
+            delete next[apk.filename];
+            return next;
+          });
+        }, 3000);
       } else {
         showToast(`${t('apk.install_fail')}: ${data.error}`, 'error');
+        setInstallProgress(prev => ({
+          ...prev,
+          [apk.filename]: { progress: -1, message: `${t('apk.install_fail')}: ${data.error}` }
+        }));
       }
     } catch (err) {
       showToast(err.message, 'error');
+      setInstallProgress(prev => ({
+        ...prev,
+        [apk.filename]: { progress: -1, message: `Error: ${err.message}` }
+      }));
     } finally {
       setInstallingFile(null);
     }
@@ -252,6 +302,23 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo, tu
                     </span>
                   </div>
 
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', gap: '0.25rem', fontFamily: 'monospace' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Pkg:</span>
+                      <span style={{ wordBreak: 'break-all' }}>{apk.packageName || 'N/A'}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)' }}>Ver: </span>
+                        <span style={{ fontWeight: 500 }}>{apk.versionName || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)' }}>Code/Build: </span>
+                        <span style={{ fontWeight: 500 }}>{apk.versionCode || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem' }}>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                       {new Date(apk.createdAt).toLocaleString()}
@@ -279,6 +346,66 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo, tu
                       )}
                     </button>
                   </div>
+                  {installProgress[apk.filename] && (
+                    <div style={{ marginTop: '0.75rem', width: '100%' }} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                        <span style={{ 
+                          color: installProgress[apk.filename].progress === -1 
+                            ? 'var(--danger)' 
+                            : installProgress[apk.filename].progress === 100 
+                              ? 'var(--success)' 
+                              : 'var(--text-secondary)',
+                          fontWeight: 500,
+                          wordBreak: 'break-all'
+                        }}>
+                          {installProgress[apk.filename].message}
+                        </span>
+                        {installProgress[apk.filename].progress !== null && installProgress[apk.filename].progress >= 0 && (
+                          <span style={{ fontWeight: 600 }}>{installProgress[apk.filename].progress}%</span>
+                        )}
+                      </div>
+                      
+                      <div style={{ 
+                        width: '100%', 
+                        height: '6px', 
+                        backgroundColor: 'var(--border)', 
+                        borderRadius: '3px', 
+                        overflow: 'hidden'
+                      }}>
+                        {installProgress[apk.filename].progress === -1 ? (
+                          <div style={{ width: '100%', height: '100%', backgroundColor: 'var(--danger)' }} />
+                        ) : (
+                          <div 
+                            style={{ 
+                              width: `${installProgress[apk.filename].progress !== null ? installProgress[apk.filename].progress : 10}%`, 
+                              height: '100%', 
+                              backgroundColor: installProgress[apk.filename].progress === 100 ? 'var(--success)' : 'var(--primary)',
+                              transition: 'width 0.3s ease-out'
+                            }} 
+                          />
+                        )}
+                      </div>
+                      
+                      {installProgress[apk.filename].progress === -1 && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInstallProgress(prev => {
+                                const next = { ...prev };
+                                delete next[apk.filename];
+                                return next;
+                              });
+                            }}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.15rem 0.5rem', fontSize: '0.7rem', height: 'auto' }}
+                          >
+                            {t('common.close')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -471,9 +598,17 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo, tu
                 )
               )}
 
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, wordBreak: 'break-all', display: 'block', maxWidth: '200px' }}>
-                {selectedApkForQr.originalName}
-              </span>
+              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, wordBreak: 'break-all', display: 'block', maxWidth: '200px', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                  {selectedApkForQr.originalName}
+                </span>
+                <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', maxWidth: '200px' }}>
+                  pkg: {selectedApkForQr.packageName || 'N/A'}
+                </div>
+                <div>
+                  v{selectedApkForQr.versionName || 'N/A'} (build {selectedApkForQr.versionCode || 'N/A'})
+                </div>
+              </div>
             </div>
           ) : (
             <div style={{ padding: '2rem 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>

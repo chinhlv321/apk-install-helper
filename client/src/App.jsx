@@ -183,14 +183,14 @@ export default function App() {
 
         {/* Tab Body Viewports */}
         <div style={{ flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
-          {activeTab === 'logcat' && (
+          <div style={{ display: activeTab === 'logcat' ? 'block' : 'none', height: '100%' }}>
             <LogcatViewer 
               deviceId={selectedDeviceId} 
               showToast={showToast} 
             />
-          )}
+          </div>
 
-          {activeTab === 'apk' && (
+          <div style={{ display: activeTab === 'apk' ? 'block' : 'none', height: '100%' }}>
             <ApkManager 
               selectedDeviceId={selectedDeviceId}
               showToast={showToast}
@@ -198,15 +198,15 @@ export default function App() {
               tunnelActive={tunnelActive}
               tunnelUrl={tunnelUrl}
             />
-          )}
+          </div>
 
-          {activeTab === 'settings' && (
+          <div style={{ display: activeTab === 'settings' ? 'block' : 'none', height: '100%' }}>
             <SettingsPanel 
               showToast={showToast}
               serverInfo={serverInfo}
               setServerInfo={setServerInfo}
             />
-          )}
+          </div>
         </div>
       </main>
 

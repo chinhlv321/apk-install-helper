@@ -7,7 +7,7 @@
     "success": "Success",
     "warning": "Warning",
     "delete": "Delete",
-    "save": "Save"
+    "loading": "Loading..."
   },
   "nav": {
     "logcat": "Logcat Viewer",
@@ -66,6 +66,9 @@
     "export": "Export Logs",
     "auto_scroll": "Auto Scroll",
     "package_placeholder": "Filter by Package...",
+    "session": "Session",
+    "no_filter": "No Filter",
+    "reset_filters": "Show All Packages (Reset)",
     "select_device_warning": "Please select a connected device from the sidebar to stream logs.",
     "no_logs": "No logs received. Make sure debugging is enabled on the device.",
     "level": "Level",

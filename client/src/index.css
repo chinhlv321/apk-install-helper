@@ -307,7 +307,7 @@ code, pre, .mono {
   align-items: center;
   gap: 0.75rem;
   flex-shrink: 0;
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .logcat-list-wrapper {
@@ -466,3 +466,109 @@ code, pre, .mono {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+/* Session Dropdown styles */
+.session-dropdown-container {
+  position: relative;
+  display: inline-block;
+}
+
+.session-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  height: 32px;
+  min-width: 140px;
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.session-dropdown-trigger:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--primary);
+}
+
+.session-dropdown-trigger-text {
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.session-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1000;
+  min-width: 240px;
+  max-width: 360px;
+  max-height: 280px;
+  overflow-y: auto;
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  box-shadow: var(--shadow-lg);
+  padding: 0.25rem 0;
+}
+
+.session-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.session-dropdown-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.session-dropdown-item.active {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.session-dropdown-item-text {
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-dropdown-item-exited {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+}
+
+.session-dropdown-checkmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--primary);
+}
+

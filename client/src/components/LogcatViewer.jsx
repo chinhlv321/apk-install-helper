@@ -3,12 +3,53 @@ import { useTranslation } from 'react-i18next';
 import io from 'socket.io-client';
 import { 
   Play, Square, Trash2, Download, Scroll, 
-  Search, SlidersHorizontal, Filter 
+  Search, SlidersHorizontal, Filter, ChevronDown, Check
 } from 'lucide-react';
 
 const LOG_LEVELS = ['V', 'D', 'I', 'W', 'E', 'F'];
 const MAX_LOGS = 50000; // Keep browser tab from crashing
 const ITEM_HEIGHT = 24; // px
+
+function isExternalPackage(name, thirdPartySet) {
+  if (!name) return false;
+  if (name.startsWith('/')) return false;
+  
+  const nameLower = name.toLowerCase();
+  if (
+    nameLower.startsWith('android') || 
+    nameLower.startsWith('com.android.') || 
+    nameLower.startsWith('com.google.android.') || 
+    nameLower.startsWith('com.sec.android.') || 
+    nameLower.startsWith('com.huawei.') ||
+    nameLower.startsWith('com.xiaomi.') ||
+    nameLower.startsWith('com.miui.') ||
+    nameLower.startsWith('com.oppo.') ||
+    nameLower.startsWith('com.vivo.') ||
+    nameLower.startsWith('com.oneplus.') ||
+    nameLower.startsWith('com.qualcomm.') ||
+    nameLower.startsWith('com.facebook.system') ||
+    nameLower.startsWith('com.facebook.services') ||
+    nameLower.startsWith('com.facebook.appmanager') ||
+    nameLower.startsWith('com.appsflyer.') ||
+    nameLower.startsWith('com.kyumpany.') ||
+    nameLower.includes('qqdownloader') ||
+    nameLower.includes('autoinstalls') ||
+    nameLower.startsWith('system') ||
+    nameLower.startsWith('vendor') ||
+    ['sh', 'su', 'logd', 'adbd', 'zygote', 'zygote64', 'init', 'debuggerd', 'surfaceflinger', 'servicemanager', 'vold', 'lmkd', 'healthd', 'netd', 'installd', 'keystore', 'gatekeeperd'].includes(nameLower)
+  ) {
+    return false;
+  }
+  
+  // If we have third party packages loaded, use it to ensure it's in the user-installed set
+  if (thirdPartySet && thirdPartySet.size > 0) {
+    const baseName = name.split(':')[0];
+    return thirdPartySet.has(baseName);
+  }
+  
+  const dotsCount = (name.match(/\./g) || []).length;
+  return dotsCount >= 1;
+}
 
 export default function LogcatViewer({ deviceId, showToast }) {
   const { t } = useTranslation();
@@ -23,6 +64,13 @@ export default function LogcatViewer({ deviceId, showToast }) {
   const [pidFilter, setPidFilter] = useState('');
   const [packageNameFilter, setPackageNameFilter] = useState('');
   const [pidMap, setPidMap] = useState({});
+
+  // Session tracking state
+  const [sessions, setSessions] = useState([]);
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const [thirdPartyPackages, setThirdPartyPackages] = useState(new Set());
 
   // Socket reference
   const socketRef = useRef(null);
@@ -76,10 +124,23 @@ export default function LogcatViewer({ deviceId, showToast }) {
     };
   }, [deviceId]);
 
-  // Fetch running processes periodically for package filtering mapping
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch running processes periodically for package filtering mapping and session tracking
   useEffect(() => {
     if (!deviceId) {
       setPidMap({});
+      setSessions([]);
+      setSelectedSession(null);
       return;
     }
 
@@ -93,6 +154,42 @@ export default function LogcatViewer({ deviceId, showToast }) {
             map[p.pid] = p.name;
           });
           setPidMap(map);
+
+          // Merge running processes into sessions history
+          setSessions(prevSessions => {
+            const runningPids = new Set(data.processes.map(p => p.pid));
+            
+            // Map existing sessions, keeping track of exited ones
+            let updated = prevSessions.map(s => {
+              if (!runningPids.has(s.pid)) {
+                return { ...s, isExited: true };
+              }
+              return { ...s, isExited: false };
+            });
+
+            // Add new running processes that aren't already in sessions
+            data.processes.forEach(p => {
+              // Filter out system processes/packages
+              if (!isExternalPackage(p.name)) return;
+
+              const exists = updated.some(s => s.pid === p.pid);
+              if (!exists) {
+                updated.push({
+                  pid: p.pid,
+                  packageName: p.name,
+                  isExited: false
+                });
+              }
+            });
+
+            // Sort: running first, then newer PID first (highest PID = recently opened)
+            return updated.sort((a, b) => {
+              if (a.isExited !== b.isExited) {
+                return a.isExited ? 1 : -1;
+              }
+              return b.pid - a.pid;
+            });
+          });
         }
       } catch (err) {
         console.error('Failed to fetch processes:', err);
@@ -105,12 +202,37 @@ export default function LogcatViewer({ deviceId, showToast }) {
     return () => clearInterval(interval);
   }, [deviceId]);
 
+  // Fetch 3rd party packages installed on device
+  useEffect(() => {
+    if (!deviceId) {
+      setThirdPartyPackages(new Set());
+      return;
+    }
+
+    const fetchThirdParty = async () => {
+      try {
+        const response = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/third-party-packages`);
+        const data = await response.json();
+        if (data.success) {
+          setThirdPartyPackages(new Set(data.packages));
+        }
+      } catch (err) {
+        console.error('Failed to fetch third-party packages:', err);
+      }
+    };
+
+    fetchThirdParty();
+  }, [deviceId]);
+
   // Restart streaming when device changes
   useEffect(() => {
     if (isStreaming) {
       stopStreaming();
     }
     clearLogs();
+    setSessions([]);
+    setSelectedSession(null);
+    setThirdPartyPackages(new Set());
     if (deviceId) {
       startStreaming();
     }
@@ -194,10 +316,74 @@ export default function LogcatViewer({ deviceId, showToast }) {
     setAutoScroll(isAtBottom);
   };
 
+  // Synchronize selectedSession when pidFilter changes (e.g., manual input)
+  useEffect(() => {
+    const numericPid = parseInt(pidFilter, 10);
+    if (!isNaN(numericPid)) {
+      const match = sessions.find(s => s.pid === numericPid);
+      if (match) {
+        setSelectedSession(match);
+        return;
+      }
+    }
+    setSelectedSession(null);
+  }, [pidFilter, sessions]);
+
+  // If package name filter changes, and current selected session doesn't match, clear it
+  useEffect(() => {
+    if (selectedSession && packageNameFilter) {
+      if (!selectedSession.packageName.toLowerCase().includes(packageNameFilter.toLowerCase())) {
+        setSelectedSession(null);
+        setPidFilter('');
+      }
+    }
+  }, [packageNameFilter, selectedSession]);
+
+  const filteredSessions = useMemo(() => {
+    // Filter sessions to only show external user-installed packages
+    const result = sessions.filter(s => isExternalPackage(s.packageName, thirdPartyPackages));
+    
+    if (!packageNameFilter) {
+      return result;
+    }
+    return result.filter(s => 
+      s.packageName && s.packageName.toLowerCase().includes(packageNameFilter.toLowerCase())
+    );
+  }, [sessions, packageNameFilter, thirdPartyPackages]);
+
+  const handleSelectSession = (session) => {
+    setSelectedSession(session);
+    setIsDropdownOpen(false);
+    if (session) {
+      setPidFilter(String(session.pid));
+      if (!packageNameFilter || !session.packageName.toLowerCase().includes(packageNameFilter.toLowerCase())) {
+        setPackageNameFilter(session.packageName);
+      }
+    } else {
+      setPidFilter('');
+    }
+  };
+
+  const handleResetAllFilters = () => {
+    setSelectedSession(null);
+    setPidFilter('');
+    setPackageNameFilter('');
+    setIsDropdownOpen(false);
+  };
+
   const uniqueRunningPackages = useMemo(() => {
     const pkgs = new Set(Object.values(pidMap));
-    return Array.from(pkgs).filter(Boolean).sort();
-  }, [pidMap]);
+    return Array.from(pkgs).filter(pkg => isExternalPackage(pkg, thirdPartyPackages)).sort();
+  }, [pidMap, thirdPartyPackages]);
+
+  // Map of PID to package name history to support filtering log lines of exited processes
+  const pidToPackageHistory = useMemo(() => {
+    const map = {};
+    sessions.forEach(s => {
+      map[s.pid] = s.packageName;
+    });
+    return map;
+  }, [sessions]);
 
   // Perform client-side filtering
   const filteredLogs = useMemo(() => {
@@ -218,14 +404,16 @@ export default function LogcatViewer({ deviceId, showToast }) {
         }
       }
 
-      // 3. PID filter
-      if (pidFilter && String(log.pid) !== pidFilter.trim()) {
+      // 3. PID / Session filter
+      if (selectedSession) {
+        if (log.pid !== selectedSession.pid) return false;
+      } else if (pidFilter && String(log.pid) !== pidFilter.trim()) {
         return false;
       }
 
       // 4. Package Name filter
-      if (packageNameFilter) {
-        const procName = pidMap[log.pid];
+      if (packageNameFilter && !selectedSession) {
+        const procName = pidToPackageHistory[log.pid] || pidMap[log.pid];
         if (!procName || !procName.toLowerCase().includes(packageNameFilter.toLowerCase())) {
           return false;
         }
@@ -243,7 +431,7 @@ export default function LogcatViewer({ deviceId, showToast }) {
 
       return true;
     });
-  }, [logs, minLevel, searchQuery, tagFilter, pidFilter, packageNameFilter, pidMap]);
+  }, [logs, minLevel, searchQuery, tagFilter, pidFilter, packageNameFilter, pidMap, selectedSession, pidToPackageHistory]);
 
   // Keep scroll at bottom if autoscroll is enabled
   useEffect(() => {
@@ -318,19 +506,6 @@ export default function LogcatViewer({ deviceId, showToast }) {
           </select>
         </div>
 
-        {/* PID Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>PID:</span>
-          <input 
-            type="text" 
-            placeholder={t('logcat.pid_placeholder')}
-            value={pidFilter}
-            onChange={(e) => setPidFilter(e.target.value)}
-            className="form-control"
-            style={{ width: '70px', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-          />
-        </div>
-
         {/* Package Filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexGrow: 1, minWidth: '140px' }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Pkg:</span>
@@ -348,6 +523,85 @@ export default function LogcatViewer({ deviceId, showToast }) {
               <option key={pkg} value={pkg} />
             ))}
           </datalist>
+        </div>
+
+        {/* Session Filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('logcat.session') || 'Session'}:</span>
+          <div className="session-dropdown-container" ref={dropdownRef}>
+            <button 
+              type="button"
+              className="session-dropdown-trigger" 
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              title="Select process session to filter logs"
+            >
+              <span className="session-dropdown-trigger-text">
+                {selectedSession 
+                  ? `${selectedSession.packageName} (${selectedSession.pid})` 
+                  : (t('logcat.no_filter') || 'No Filter')}
+              </span>
+              <ChevronDown size={14} style={{ opacity: 0.7, flexShrink: 0 }} />
+            </button>
+            
+            {isDropdownOpen && (
+              <div className="session-dropdown-menu">
+                <button 
+                  type="button"
+                  className="session-dropdown-item"
+                  onClick={handleResetAllFilters}
+                  style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '0.25rem' }}
+                >
+                  <div className="session-dropdown-checkmark">
+                    {/* Action button has no checkmark */}
+                  </div>
+                  <span className="session-dropdown-item-text" style={{ fontWeight: 500, color: 'var(--primary)' }}>
+                    {t('logcat.reset_filters') || 'Reset All Filters'}
+                  </span>
+                </button>
+
+                <button 
+                  type="button"
+                  className={`session-dropdown-item ${!selectedSession ? 'active' : ''}`}
+                  onClick={() => handleSelectSession(null)}
+                >
+                  <div className="session-dropdown-checkmark">
+                    {!selectedSession && <Check size={12} />}
+                  </div>
+                  <span className="session-dropdown-item-text">
+                    {t('logcat.no_filter') || 'No Filter'}
+                  </span>
+                </button>
+                
+                {filteredSessions.map(session => {
+                  const isSelected = selectedSession && selectedSession.pid === session.pid;
+                  return (
+                    <button 
+                      key={session.pid}
+                      type="button"
+                      className={`session-dropdown-item ${isSelected ? 'active' : ''}`}
+                      onClick={() => handleSelectSession(session)}
+                    >
+                      <div className="session-dropdown-checkmark">
+                        {isSelected && <Check size={12} />}
+                      </div>
+                      <span className="session-dropdown-item-text" title={`${session.packageName} (${session.pid})`}>
+                        {session.packageName} ({session.pid})
+                        {session.isExited && (
+                          <span className="session-dropdown-item-exited"> [Exited]</span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+                
+                {filteredSessions.length === 0 && (
+                  <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                    No sessions found
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Tag Filter */}
@@ -417,7 +671,6 @@ export default function LogcatViewer({ deviceId, showToast }) {
                   title="Double click to copy log line"
                 >
                   <span className="logcat-col-time">{displayTime}</span>
-                  <span className="logcat-col-pid-tid">{log.pid}/{log.tid}</span>
                   <span className={`logcat-col-level log-level-${log.priority}`}>{log.priority}</span>
                   <span className="logcat-col-tag" title={log.tag}>{log.tag}</span>
                   <span className={`logcat-col-msg log-${log.priority}`}>{log.message}</span>
