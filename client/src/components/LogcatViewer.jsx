@@ -8,7 +8,7 @@ import {
 
 const LOG_LEVELS = ['V', 'D', 'I', 'W', 'E', 'F'];
 const MAX_LOGS = 50000; // Keep browser tab from crashing
-const ITEM_HEIGHT = 22; // px
+const ITEM_HEIGHT = 24; // px
 
 export default function LogcatViewer({ deviceId, showToast }) {
   const { t } = useTranslation();
@@ -21,6 +21,8 @@ export default function LogcatViewer({ deviceId, showToast }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [pidFilter, setPidFilter] = useState('');
+  const [packageNameFilter, setPackageNameFilter] = useState('');
+  const [pidMap, setPidMap] = useState({});
 
   // Socket reference
   const socketRef = useRef(null);
@@ -74,6 +76,35 @@ export default function LogcatViewer({ deviceId, showToast }) {
     };
   }, [deviceId]);
 
+  // Fetch running processes periodically for package filtering mapping
+  useEffect(() => {
+    if (!deviceId) {
+      setPidMap({});
+      return;
+    }
+
+    const fetchProcesses = async () => {
+      try {
+        const response = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/processes`);
+        const data = await response.json();
+        if (data.success) {
+          const map = {};
+          data.processes.forEach(p => {
+            map[p.pid] = p.name;
+          });
+          setPidMap(map);
+        }
+      } catch (err) {
+        console.error('Failed to fetch processes:', err);
+      }
+    };
+
+    fetchProcesses();
+    const interval = setInterval(fetchProcesses, 4000);
+
+    return () => clearInterval(interval);
+  }, [deviceId]);
+
   // Restart streaming when device changes
   useEffect(() => {
     if (isStreaming) {
@@ -110,6 +141,15 @@ export default function LogcatViewer({ deviceId, showToast }) {
   const clearLogs = () => {
     logBuffer.current = [];
     setLogs([]);
+  };
+
+  const handleCopyLine = (log) => {
+    const fullLine = `${log.time} ${log.pid}/${log.tid} ${log.priority} ${log.tag}: ${log.message}`;
+    navigator.clipboard.writeText(fullLine).then(() => {
+      showToast(t('logcat.copied_line'), 'success');
+    }).catch(err => {
+      console.error('Failed to copy: ', err);
+    });
   };
 
   const handleExport = () => {
@@ -154,6 +194,11 @@ export default function LogcatViewer({ deviceId, showToast }) {
     setAutoScroll(isAtBottom);
   };
 
+  const uniqueRunningPackages = useMemo(() => {
+    const pkgs = new Set(Object.values(pidMap));
+    return Array.from(pkgs).filter(Boolean).sort();
+  }, [pidMap]);
+
   // Perform client-side filtering
   const filteredLogs = useMemo(() => {
     const minLevelIdx = LOG_LEVELS.indexOf(minLevel);
@@ -178,7 +223,15 @@ export default function LogcatViewer({ deviceId, showToast }) {
         return false;
       }
 
-      // 4. Message filter
+      // 4. Package Name filter
+      if (packageNameFilter) {
+        const procName = pidMap[log.pid];
+        if (!procName || !procName.toLowerCase().includes(packageNameFilter.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // 5. Message filter
       if (searchQuery) {
         try {
           const regex = new RegExp(searchQuery, 'i');
@@ -190,7 +243,7 @@ export default function LogcatViewer({ deviceId, showToast }) {
 
       return true;
     });
-  }, [logs, minLevel, searchQuery, tagFilter, pidFilter]);
+  }, [logs, minLevel, searchQuery, tagFilter, pidFilter, packageNameFilter, pidMap]);
 
   // Keep scroll at bottom if autoscroll is enabled
   useEffect(() => {
@@ -219,12 +272,12 @@ export default function LogcatViewer({ deviceId, showToast }) {
         {isStreaming ? (
           <button onClick={stopStreaming} className="btn btn-danger" style={{ padding: '0.4rem 0.75rem' }}>
             <Square size={14} fill="currentColor" />
-            {t('logcat.stop')}
+            {t('logcat.pause')}
           </button>
         ) : (
           <button onClick={startStreaming} className="btn btn-primary" style={{ padding: '0.4rem 0.75rem' }} disabled={!deviceId}>
             <Play size={14} fill="currentColor" />
-            {t('logcat.start')}
+            {t('logcat.resume')}
           </button>
         )}
 
@@ -278,6 +331,25 @@ export default function LogcatViewer({ deviceId, showToast }) {
           />
         </div>
 
+        {/* Package Filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexGrow: 1, minWidth: '140px' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Pkg:</span>
+          <input 
+            type="text" 
+            placeholder={t('logcat.package_placeholder')}
+            value={packageNameFilter}
+            onChange={(e) => setPackageNameFilter(e.target.value)}
+            className="form-control"
+            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+            list="running-packages"
+          />
+          <datalist id="running-packages">
+            {uniqueRunningPackages.map(pkg => (
+              <option key={pkg} value={pkg} />
+            ))}
+          </datalist>
+        </div>
+
         {/* Tag Filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexGrow: 1, minWidth: '120px' }}>
           <Filter size={12} style={{ color: 'var(--text-secondary)' }} />
@@ -328,24 +400,30 @@ export default function LogcatViewer({ deviceId, showToast }) {
           </div>
         ) : (
           <div style={{ height: `${totalHeight}px`, position: 'relative', width: '100%' }}>
-            {visibleLogs.map(({ log, actualIndex }) => (
-              <div 
-                key={actualIndex}
-                className="logcat-line"
-                style={{
-                  position: 'absolute',
-                  top: `${actualIndex * ITEM_HEIGHT}px`,
-                  height: `${ITEM_HEIGHT}px`,
-                  width: '100%'
-                }}
-              >
-                <span className="logcat-col-time">{log.time}</span>
-                <span className="logcat-col-pid-tid">{log.pid}/{log.tid}</span>
-                <span className={`logcat-col-level log-level-${log.priority}`}>{log.priority}</span>
-                <span className="logcat-col-tag" title={log.tag}>{log.tag}</span>
-                <span className={`logcat-col-msg log-${log.priority}`}>{log.message}</span>
-              </div>
-            ))}
+            {visibleLogs.map(({ log, actualIndex }) => {
+              const displayTime = log.time && log.time.includes(' ') ? log.time.split(/\s+/)[1] : log.time;
+              return (
+                <div 
+                  key={actualIndex}
+                  className="logcat-line"
+                  style={{
+                    position: 'absolute',
+                    top: `${actualIndex * ITEM_HEIGHT}px`,
+                    height: `${ITEM_HEIGHT}px`,
+                    minWidth: '100%',
+                    width: 'max-content'
+                  }}
+                  onDoubleClick={() => handleCopyLine(log)}
+                  title="Double click to copy log line"
+                >
+                  <span className="logcat-col-time">{displayTime}</span>
+                  <span className="logcat-col-pid-tid">{log.pid}/{log.tid}</span>
+                  <span className={`logcat-col-level log-level-${log.priority}`}>{log.priority}</span>
+                  <span className="logcat-col-tag" title={log.tag}>{log.tag}</span>
+                  <span className={`logcat-col-msg log-${log.priority}`}>{log.message}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

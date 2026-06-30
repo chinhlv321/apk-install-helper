@@ -2,7 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const BIN_DIR = path.join(__dirname, '..', 'bin');
+const isPkg = typeof process.pkg !== 'undefined';
+const baseDir = isPkg 
+  ? path.dirname(process.execPath) 
+  : path.join(__dirname, '..');
+
+const BIN_DIR = path.join(baseDir, 'bin');
 const PLATFORM_TOOLS_DIR = path.join(BIN_DIR, 'platform-tools');
 
 async function downloadAdb() {
@@ -61,4 +66,8 @@ async function downloadAdb() {
   }
 }
 
-downloadAdb();
+module.exports = downloadAdb;
+
+if (require.main === module) {
+  downloadAdb();
+}

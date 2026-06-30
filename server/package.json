@@ -2,10 +2,16 @@
   "name": "server",
   "version": "1.0.0",
   "private": true,
-  "main": "src/index.js",
+  "bin": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "build:exe": "npx pkg . --targets node18-win-x64 --output ../dist/apk-install-helper.exe"
+  },
+  "pkg": {
+    "assets": [
+      "src/public/**/*"
+    ]
   },
   "dependencies": {
     "@ngrok/ngrok": "^1.4.1",

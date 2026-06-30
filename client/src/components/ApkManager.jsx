@@ -6,7 +6,7 @@ import {
   Wifi, HelpCircle, ArrowRight, RefreshCw, FileCode, Check 
 } from 'lucide-react';
 
-export default function ApkManager({ selectedDeviceId, showToast, serverInfo }) {
+export default function ApkManager({ selectedDeviceId, showToast, serverInfo, tunnelActive, tunnelUrl }) {
   const { t } = useTranslation();
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -14,13 +14,9 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo }) 
   const [apks, setApks] = useState([]);
   const [installingFile, setInstallingFile] = useState(null);
   
-  // Tunnel status
-  const [tunnelActive, setTunnelActive] = useState(false);
-  const [tunnelUrl, setTunnelUrl] = useState(null);
-
-  // Selected file for QR Code display
   const [selectedApkForQr, setSelectedApkForQr] = useState(null);
   const [qrType, setQrType] = useState('local'); // 'local' or 'cross'
+  const [showTailscaleGuide, setShowTailscaleGuide] = useState(false);
 
   const fileInputRef = useRef(null);
 
@@ -31,6 +27,10 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo }) 
   
   const localDownloadUrl = selectedApkForQr 
     ? `http://${localIp}:${serverPort}/download?file=${selectedApkForQr.filename}`
+    : '';
+
+  const tailscaleDownloadUrl = selectedApkForQr && serverInfo && serverInfo.tailscaleIp
+    ? `http://${serverInfo.tailscaleIp}:${serverPort}/download?file=${selectedApkForQr.filename}`
     : '';
 
   const crossDownloadUrl = selectedApkForQr && tunnelUrl
@@ -53,26 +53,11 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo }) 
     }
   };
 
-  const fetchTunnelStatus = async () => {
-    try {
-      const res = await fetch('/api/tunnel/status');
-      const data = await res.json();
-      if (data.success) {
-        setTunnelActive(data.active);
-        setTunnelUrl(data.url);
-      }
-    } catch (err) {
-      console.error('Error fetching tunnel status:', err);
-    }
-  };
-
   useEffect(() => {
     fetchApks();
-    fetchTunnelStatus();
     // Poll status periodically
     const interval = setInterval(() => {
       fetchApks();
-      fetchTunnelStatus();
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -312,7 +297,7 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo }) 
 
           {selectedApkForQr ? (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              {/* Tabs for QR Local/Ngrok */}
+              {/* Tabs for QR: Local / Tailscale / Ngrok */}
               <div style={{ display: 'flex', width: '100%', border: '1px solid var(--border)', borderRadius: '0.375rem', overflow: 'hidden', marginBottom: '1rem' }}>
                 <button 
                   onClick={() => setQrType('local')}
@@ -320,68 +305,174 @@ export default function ApkManager({ selectedDeviceId, showToast, serverInfo }) 
                     flex: 1,
                     padding: '0.4rem',
                     border: 'none',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
                     cursor: 'pointer',
                     backgroundColor: qrType === 'local' ? 'var(--primary-light)' : 'transparent',
-                    color: qrType === 'local' ? 'var(--primary)' : 'var(--text-secondary)'
+                    color: qrType === 'local' ? 'var(--primary)' : 'var(--text-secondary)',
+                    borderRight: '1px solid var(--border)'
                   }}
                 >
                   <Wifi size={12} style={{ marginRight: '4px' }} />
-                  {t('apk.local_network')}
+                  LAN Wi-Fi
                 </button>
                 <button 
-                  onClick={() => setQrType('cross')}
+                  onClick={() => setQrType('tailscale')}
                   style={{
                     flex: 1,
                     padding: '0.4rem',
                     border: 'none',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
                     cursor: 'pointer',
-                    backgroundColor: qrType === 'cross' ? 'var(--primary-light)' : 'transparent',
-                    color: qrType === 'cross' ? 'var(--primary)' : 'var(--text-secondary)'
+                    backgroundColor: qrType === 'tailscale' ? 'var(--primary-light)' : 'transparent',
+                    color: qrType === 'tailscale' ? 'var(--primary)' : 'var(--text-secondary)',
+                    borderRight: '1px solid var(--border)'
                   }}
                 >
                   <Globe size={12} style={{ marginRight: '4px' }} />
-                  {t('apk.cross_network')}
+                  Tailscale VPN
+                </button>
+                <button 
+                  onClick={() => setQrType('ngrok')}
+                  style={{
+                    flex: 1,
+                    padding: '0.4rem',
+                    border: 'none',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    backgroundColor: qrType === 'ngrok' ? 'var(--primary-light)' : 'transparent',
+                    color: qrType === 'ngrok' ? 'var(--primary)' : 'var(--text-secondary)'
+                  }}
+                >
+                  <Globe size={12} style={{ marginRight: '4px' }} />
+                  Ngrok Internet
                 </button>
               </div>
 
               {/* QR Display */}
-              {qrType === 'local' ? (
-                <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
-                  <QRCodeSVG value={localDownloadUrl} size={150} />
-                </div>
-              ) : tunnelActive && tunnelUrl ? (
-                <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
-                  <QRCodeSVG value={crossDownloadUrl} size={150} />
-                </div>
-              ) : (
-                <div style={{
-                  width: '150px',
-                  height: '150px',
-                  border: '1px dashed var(--border)',
-                  borderRadius: '0.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '1rem',
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  marginBottom: '0.75rem'
-                }}>
-                  {t('apk.tunnel_inactive')}
-                </div>
+              {qrType === 'local' && (
+                <>
+                  <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
+                    <QRCodeSVG value={localDownloadUrl} size={150} />
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', wordBreak: 'break-all', display: 'block', marginTop: '0.25rem', fontFamily: 'monospace' }}>
+                    {localDownloadUrl}
+                  </span>
+                </>
+              )}
+
+              {qrType === 'tailscale' && (
+                serverInfo && serverInfo.tailscaleIp ? (
+                  <>
+                    <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
+                      <QRCodeSVG value={tailscaleDownloadUrl} size={150} />
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', wordBreak: 'break-all', display: 'block', marginTop: '0.25rem', fontFamily: 'monospace' }}>
+                      {tailscaleDownloadUrl}
+                    </span>
+                    
+                    <button 
+                      type="button"
+                      onClick={() => setShowTailscaleGuide(!showTailscaleGuide)}
+                      className="btn btn-secondary"
+                      style={{
+                        fontSize: '0.72rem',
+                        padding: '0.3rem 0.6rem',
+                        marginTop: '0.5rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        width: 'auto'
+                      }}
+                    >
+                      {showTailscaleGuide ? 'Ẩn hướng dẫn Tailscale' : '❓ Hướng dẫn kết nối Tailscale'}
+                    </button>
+                    
+                    {showTailscaleGuide && (
+                      <div style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid var(--border)',
+                        borderRadius: '0.375rem',
+                        backgroundColor: 'var(--bg-app)',
+                        textAlign: 'left',
+                        fontSize: '0.72rem',
+                        lineHeight: '1.4',
+                        marginTop: '0.5rem'
+                      }}>
+                        <div style={{ fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>
+                          Các bước kết nối Tailscale VPN:
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', color: 'var(--text-secondary)' }}>
+                          <div><b>Bước 1:</b> Cài đặt Tailscale cho PC tại <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>tailscale.com/download</a>.</div>
+                          <div><b>Bước 2:</b> Tải app <b>Tailscale</b> trên điện thoại từ CH Play / App Store.</div>
+                          <div><b>Bước 3:</b> Đăng nhập <b>cùng một tài khoản</b> trên cả PC và Phone, sau đó bật VPN lên.</div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{
+                    width: '100%',
+                    padding: '1rem',
+                    border: '1px dashed var(--border)',
+                    borderRadius: '0.5rem',
+                    backgroundColor: 'var(--bg-app)',
+                    textAlign: 'left',
+                    fontSize: '0.75rem',
+                    lineHeight: '1.45',
+                    marginBottom: '0.75rem'
+                  }}>
+                    <div style={{ fontWeight: 600, color: '#d97706', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      ⚠️ Chưa phát hiện VPN Tailscale!
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', color: 'var(--text-secondary)' }}>
+                      <div><b>Bước 1:</b> Tải & cài đặt Tailscale cho PC tại <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'underline' }}>tailscale.com/download</a>.</div>
+                      <div><b>Bước 2:</b> Cài đặt app <b>Tailscale</b> trên điện thoại từ Google Play Store hoặc App Store.</div>
+                      <div><b>Bước 3:</b> Đăng nhập <b>cùng một tài khoản</b> trên cả PC và Phone, sau đó bật VPN (Connect) trên cả 2 máy.</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '0.25rem', borderTop: '1px solid var(--border)', paddingTop: '0.4rem' }}>
+                        ℹ️ Sau khi bật, trang web sẽ tự động nhận diện và hiển thị mã QR Tailscale.
+                      </div>
+                    </div>
+                  </div>
+                )
+              )}
+
+              {qrType === 'ngrok' && (
+                tunnelActive && tunnelUrl ? (
+                  <>
+                    <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
+                      <QRCodeSVG value={crossDownloadUrl} size={150} />
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', wordBreak: 'break-all', display: 'block', marginTop: '0.25rem', fontFamily: 'monospace' }}>
+                      {crossDownloadUrl}
+                    </span>
+                  </>
+                ) : (
+                  <div style={{
+                    width: '100%',
+                    padding: '1rem',
+                    border: '1px dashed var(--border)',
+                    borderRadius: '0.5rem',
+                    backgroundColor: 'var(--bg-app)',
+                    textAlign: 'center',
+                    fontSize: '0.75rem',
+                    lineHeight: '1.45',
+                    marginBottom: '0.75rem',
+                    color: 'var(--text-secondary)'
+                  }}>
+                    ⚠️ <b>Đường truyền Ngrok đang tắt!</b>
+                    <p style={{ marginTop: '0.25rem', fontSize: '0.72rem' }}>
+                      Hãy vào tab <b>Cài đặt</b> để bật đường truyền Ngrok trước khi chia sẻ ngoài mạng.
+                    </p>
+                  </div>
+                )
               )}
 
               <span style={{ fontSize: '0.8rem', fontWeight: 600, wordBreak: 'break-all', display: 'block', maxWidth: '200px' }}>
                 {selectedApkForQr.originalName}
-              </span>
-
-              {/* Display generated url string */}
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', wordBreak: 'break-all', display: 'block', marginTop: '0.25rem', fontFamily: 'monospace' }}>
-                {qrType === 'local' ? localDownloadUrl : (tunnelActive ? crossDownloadUrl : '—')}
               </span>
             </div>
           ) : (

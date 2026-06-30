@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Terminal, Package, Settings, Sun, Moon, 
-  Languages, AlertCircle, Info, CheckCircle2 
+  Languages, AlertCircle, Info, CheckCircle2,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 import DevicePanel from './components/DevicePanel';
@@ -14,6 +15,7 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState('logcat');
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
   // Theme state
   const [theme, setTheme] = useState(() => {
@@ -100,7 +102,7 @@ export default function App() {
   return (
     <div className="app-container">
       {/* Sidebar - Device Manager */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${isSidebarOpen ? '' : 'collapsed'}`}>
         <DevicePanel 
           selectedDeviceId={selectedDeviceId}
           setSelectedDeviceId={setSelectedDeviceId}
@@ -115,30 +117,42 @@ export default function App() {
       <main className="main-content">
         {/* Top Header Bar */}
         <header className="header-bar">
-          {/* Navigation tabs */}
-          <nav className="tab-nav">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {/* Sidebar toggle button */}
             <button 
-              onClick={() => setActiveTab('logcat')}
-              className={`tab-button ${activeTab === 'logcat' ? 'active' : ''}`}
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="btn btn-secondary"
+              style={{ padding: '0.5rem', borderRadius: '0.375rem' }}
+              title={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
             >
-              <Terminal size={18} />
-              {t('nav.logcat')}
+              {isSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
             </button>
-            <button 
-              onClick={() => setActiveTab('apk')}
-              className={`tab-button ${activeTab === 'apk' ? 'active' : ''}`}
-            >
-              <Package size={18} />
-              {t('nav.apk')}
-            </button>
-            <button 
-              onClick={() => setActiveTab('settings')}
-              className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`}
-            >
-              <Settings size={18} />
-              {t('nav.settings')}
-            </button>
-          </nav>
+
+            {/* Navigation tabs */}
+            <nav className="tab-nav">
+              <button 
+                onClick={() => setActiveTab('logcat')}
+                className={`tab-button ${activeTab === 'logcat' ? 'active' : ''}`}
+              >
+                <Terminal size={18} />
+                {t('nav.logcat')}
+              </button>
+              <button 
+                onClick={() => setActiveTab('apk')}
+                className={`tab-button ${activeTab === 'apk' ? 'active' : ''}`}
+              >
+                <Package size={18} />
+                {t('nav.apk')}
+              </button>
+              <button 
+                onClick={() => setActiveTab('settings')}
+                className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`}
+              >
+                <Settings size={18} />
+                Cài đặt
+              </button>
+            </nav>
+          </div>
 
           {/* Quick Controls (Theme, Language) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>

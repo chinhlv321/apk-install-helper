@@ -92,7 +92,7 @@ router.get('/saved', (req, res) => {
 });
 
 // Save bookmark device
-router.post('/save', (req, res) => {
+router.post('/save', async (req, res) => {
   const { ip, port, name } = req.body;
   if (!ip || !port) {
     return res.status(400).json({ success: false, error: 'IP and Port are required' });
@@ -101,12 +101,30 @@ router.post('/save', (req, res) => {
   const bookmarks = getBookmarks();
   const id = `${ip}:${port}`;
   
+  // Try to find the device name automatically if not provided or equals to id
+  let displayName = name;
+  if (!displayName || displayName === id) {
+    try {
+      const devices = await adbService.listDevices();
+      const connectedDevice = devices.find(d => d.id === id || d.id.startsWith(ip + ':'));
+      if (connectedDevice && connectedDevice.model && connectedDevice.model !== 'Unknown') {
+        displayName = connectedDevice.model;
+      }
+    } catch (err) {
+      console.error('Failed to auto-detect device model for bookmark:', err);
+    }
+  }
+  
+  if (!displayName) {
+    displayName = id;
+  }
+
   // Check if already exists
   const exists = bookmarks.find(b => b.id === id);
   if (exists) {
-    exists.name = name || exists.name;
+    exists.name = name || displayName;
   } else {
-    bookmarks.push({ id, ip, port, name: name || id });
+    bookmarks.push({ id, ip, port, name: displayName });
   }
 
   saveBookmarks(bookmarks);
@@ -137,6 +155,17 @@ router.post('/pair-qr/cancel', (req, res) => {
   try {
     adbService.cancelNativeQrPairing();
     res.json({ success: true, message: 'QR Pairing cancelled' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get processes of a device
+router.get('/:deviceId/processes', async (req, res) => {
+  const { deviceId } = req.params;
+  try {
+    const processes = await adbService.getProcessList(deviceId);
+    res.json({ success: true, processes });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

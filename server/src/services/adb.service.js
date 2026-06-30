@@ -461,6 +461,54 @@ async function autoDiscoverConnectPort(ip, timeoutMs) {
   return null;
 }
 
+/**
+ * Get running processes on the device.
+ */
+async function getProcessList(deviceId) {
+  // Try running ps -A first (works on Android 8+)
+  let res = await runAdbCommand(['-s', deviceId, 'shell', 'ps', '-A']);
+  
+  // If it fails or output is empty, try fallback ps
+  if (!res.success || !res.stdout.trim()) {
+    res = await runAdbCommand(['-s', deviceId, 'shell', 'ps']);
+  }
+  
+  if (!res.success) {
+    throw new Error(res.error || 'Failed to execute ps command');
+  }
+
+  const lines = res.stdout.split('\n');
+  const processes = [];
+  
+  if (lines.length <= 1) return [];
+
+  // Parse header to find column indexes
+  const headerLine = lines[0].trim();
+  const headers = headerLine.split(/\s+/);
+  
+  let pidIdx = headers.findIndex(h => h.toUpperCase() === 'PID');
+  let nameIdx = headers.findIndex(h => h.toUpperCase() === 'NAME' || h.toUpperCase() === 'CMD');
+
+  // Fallback to defaults if headers aren't parsed
+  if (pidIdx === -1) pidIdx = 1; // Usually second column
+  if (nameIdx === -1) nameIdx = headers.length - 1; // Usually last column
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const parts = line.split(/\s+/);
+    if (parts.length > Math.max(pidIdx, nameIdx)) {
+      const pid = parseInt(parts[pidIdx], 10);
+      const name = parts[nameIdx];
+      if (!isNaN(pid) && name) {
+        processes.push({ pid, name });
+      }
+    }
+  }
+
+  return processes;
+}
+
 module.exports = {
   listDevices,
   pairDevice,
@@ -471,5 +519,6 @@ module.exports = {
   stopLogcatStream,
   autoConnectMdns,
   startNativeQrPairing,
-  cancelNativeQrPairing
+  cancelNativeQrPairing,
+  getProcessList
 };

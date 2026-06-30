@@ -139,6 +139,13 @@ code, pre, .mono {
   flex-direction: column;
   flex-shrink: 0;
   overflow-y: auto;
+  transition: width 0.3s ease, border-right-color 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  border-right-color: transparent;
+  overflow: hidden;
 }
 
 .main-content {
@@ -244,6 +251,8 @@ code, pre, .mono {
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-primary {
@@ -303,7 +312,7 @@ code, pre, .mono {
 
 .logcat-list-wrapper {
   flex-grow: 1;
-  overflow-y: auto;
+  overflow: auto;
   background-color: var(--bg-logcat);
   color: var(--text-logcat);
   font-size: 0.85rem;
@@ -311,11 +320,11 @@ code, pre, .mono {
 
 .logcat-line {
   display: flex;
+  align-items: center;
   padding: 0.125rem 0.5rem;
   border-bottom: 1px solid var(--logcat-border);
   line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: nowrap;
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -324,10 +333,9 @@ code, pre, .mono {
 }
 
 .logcat-col-time {
-  width: 90px;
+  width: 100px;
   color: var(--logcat-time);
   flex-shrink: 0;
-  user-select: none;
 }
 
 .logcat-col-pid-tid {
@@ -336,7 +344,6 @@ code, pre, .mono {
   flex-shrink: 0;
   text-align: right;
   padding-right: 0.5rem;
-  user-select: none;
 }
 
 .logcat-col-level {
@@ -346,7 +353,6 @@ code, pre, .mono {
   flex-shrink: 0;
   margin-right: 0.5rem;
   border-radius: 2px;
-  user-select: none;
 }
 
 .logcat-col-tag {

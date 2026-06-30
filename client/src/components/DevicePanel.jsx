@@ -25,11 +25,12 @@ export default function DevicePanel({
   const [showPairModal, setShowPairModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [pairMethod, setPairMethod] = useState('qr'); // 'qr' or 'manual'
-  const [pairQrType, setPairQrType] = useState('local'); // 'local' or 'cross'
+  const [pairQrType, setPairQrType] = useState('local'); // 'local', 'tailscale', or 'ngrok'
   const [pairingMode, setPairingMode] = useState('native'); // 'native' or 'web'
   const [nativePairData, setNativePairData] = useState(null);
   const [nativePairStatus, setNativePairStatus] = useState(null);
   const [guideTab, setGuideTab] = useState('pair'); // 'pair' or 'connect'
+  const [showTailscaleGuide, setShowTailscaleGuide] = useState(false);
 
   // Form states
   const [ip, setIp] = useState('');
@@ -399,40 +400,44 @@ export default function DevicePanel({
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-              {bookmarks.map(b => (
-                <div 
-                  key={b.id}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    borderRadius: '0.375rem',
-                    backgroundColor: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    fontSize: '0.85rem'
-                  }}
-                >
+              {bookmarks.map(b => {
+                const connectedDev = devices.find(d => d.id === b.id || d.id.startsWith(b.ip + ':'));
+                const displayName = (b.name && b.name !== b.id) ? b.name : (connectedDev ? connectedDev.model : b.id);
+                return (
                   <div 
-                    onClick={() => handleBookmarkConnect(b)}
-                    style={{ cursor: 'pointer', flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                    key={b.id}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: '0.375rem',
+                      backgroundColor: 'var(--bg-card)',
+                      border: '1px solid var(--border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: '0.85rem'
+                    }}
                   >
-                    <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {b.name}
-                    </span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-                      {b.ip}:{b.port}
-                    </span>
+                    <div 
+                      onClick={() => handleBookmarkConnect(b)}
+                      style={{ cursor: 'pointer', flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                    >
+                      <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {displayName}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                        {b.ip}:{b.port}
+                      </span>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteBookmark(b.id)}
+                      className="btn"
+                      style={{ padding: '0.25rem', color: 'var(--text-muted)', background: 'transparent' }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => handleDeleteBookmark(b.id)}
-                    className="btn"
-                    style={{ padding: '0.25rem', color: 'var(--text-muted)', background: 'transparent' }}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -608,7 +613,7 @@ export default function DevicePanel({
                     textAlign: 'left',
                     lineHeight: '1.4'
                   }}>
-                    💡 <b>Yêu cầu quan trọng:</b> PC và điện thoại phải kết nối <b>chung Wi-Fi (LAN)</b>. Cách này KHÔNG hoạt động qua mạng khác (Ngrok/Internet) vì mDNS bị chặn. Nếu điện thoại xoay xoay quá lâu không kết nối, hãy chọn tab <b>Web QR</b> ở trên để ghép đôi vòng qua Internet.
+                    💡 <b>Yêu cầu quan trọng:</b> PC và điện thoại phải kết nối <b>chung Wi-Fi (LAN)</b>. Cách này KHÔNG hoạt động qua VPN hoặc khác mạng (Tailscale/Internet) vì mDNS bị chặn. Nếu điện thoại xoay xoay quá lâu không kết nối, hãy chọn tab <b>Web QR</b> ở trên và làm theo hướng dẫn sử dụng Tailscale.
                   </div>
 
                   {nativePairData ? (
@@ -688,7 +693,7 @@ export default function DevicePanel({
                     <b>Bước 3:</b> Nhập Port và Mã PIN 6 số từ màn hình điện thoại vào trang web.
                   </p>
 
-                  {/* Tabs for QR Local/Ngrok */}
+                  {/* Tabs for QR: Local / Tailscale / Ngrok */}
                   <div style={{ display: 'flex', width: '100%', border: '1px solid var(--border)', borderRadius: '0.375rem', overflow: 'hidden', margin: '0.5rem 0' }}>
                     <button 
                       type="button"
@@ -697,35 +702,53 @@ export default function DevicePanel({
                         flex: 1,
                         padding: '0.4rem',
                         border: 'none',
-                        fontSize: '0.75rem',
-                        fontWeight: 500,
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
                         cursor: 'pointer',
                         backgroundColor: pairQrType === 'local' ? 'var(--primary-light)' : 'transparent',
-                        color: pairQrType === 'local' ? 'var(--primary)' : 'var(--text-secondary)'
+                        color: pairQrType === 'local' ? 'var(--primary)' : 'var(--text-secondary)',
+                        borderRight: '1px solid var(--border)'
                       }}
                     >
-                      Mạng Wi-Fi (LAN)
+                      LAN Wi-Fi
                     </button>
                     <button 
                       type="button"
-                      onClick={() => setPairQrType('cross')}
+                      onClick={() => setPairQrType('tailscale')}
                       style={{
                         flex: 1,
                         padding: '0.4rem',
                         border: 'none',
-                        fontSize: '0.75rem',
-                        fontWeight: 500,
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
                         cursor: 'pointer',
-                        backgroundColor: pairQrType === 'cross' ? 'var(--primary-light)' : 'transparent',
-                        color: pairQrType === 'cross' ? 'var(--primary)' : 'var(--text-secondary)'
+                        backgroundColor: pairQrType === 'tailscale' ? 'var(--primary-light)' : 'transparent',
+                        color: pairQrType === 'tailscale' ? 'var(--primary)' : 'var(--text-secondary)',
+                        borderRight: '1px solid var(--border)'
                       }}
                     >
-                      Internet (Ngrok)
+                      Tailscale VPN
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setPairQrType('ngrok')}
+                      style={{
+                        flex: 1,
+                        padding: '0.4rem',
+                        border: 'none',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        backgroundColor: pairQrType === 'ngrok' ? 'var(--primary-light)' : 'transparent',
+                        color: pairQrType === 'ngrok' ? 'var(--primary)' : 'var(--text-secondary)'
+                      }}
+                    >
+                      Ngrok Internet
                     </button>
                   </div>
 
                   {/* QR Display */}
-                  {pairQrType === 'local' ? (
+                  {pairQrType === 'local' && (
                     <>
                       <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
                         <QRCodeSVG value={`${serverUrl}/pair-mobile`} size={180} />
@@ -734,31 +757,114 @@ export default function DevicePanel({
                         {serverUrl}/pair-mobile
                       </span>
                     </>
-                  ) : tunnelActive && tunnelUrl ? (
-                    <>
-                      <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
-                        <QRCodeSVG value={`${tunnelUrl}/pair-mobile`} size={180} />
+                  )}
+
+                  {pairQrType === 'tailscale' && (
+                    serverInfo && serverInfo.tailscaleIp ? (
+                      <>
+                        <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
+                          <QRCodeSVG value={`http://${serverInfo.tailscaleIp}:${serverInfo.port}/pair-mobile`} size={180} />
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                          http://{serverInfo.tailscaleIp}:{serverInfo.port}/pair-mobile
+                        </span>
+                        
+                        <button 
+                          type="button"
+                          onClick={() => setShowTailscaleGuide(!showTailscaleGuide)}
+                          className="btn btn-secondary"
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '0.3rem 0.6rem',
+                            marginTop: '0.5rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            width: 'auto'
+                          }}
+                        >
+                          {showTailscaleGuide ? 'Ẩn hướng dẫn Tailscale' : '❓ Hướng dẫn kết nối Tailscale'}
+                        </button>
+                        
+                        {showTailscaleGuide && (
+                          <div style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            border: '1px solid var(--border)',
+                            borderRadius: '0.375rem',
+                            backgroundColor: 'var(--bg-app)',
+                            textAlign: 'left',
+                            fontSize: '0.72rem',
+                            lineHeight: '1.4',
+                            marginTop: '0.5rem'
+                          }}>
+                            <div style={{ fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>
+                              Các bước kết nối Tailscale VPN:
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', color: 'var(--text-secondary)' }}>
+                              <div><b>Bước 1:</b> Cài đặt Tailscale cho PC tại <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>tailscale.com/download</a>.</div>
+                              <div><b>Bước 2:</b> Tải app <b>Tailscale</b> trên điện thoại từ CH Play / App Store.</div>
+                              <div><b>Bước 3:</b> Đăng nhập <b>cùng một tài khoản</b> trên cả PC và Phone, sau đó bật VPN lên.</div>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        padding: '1rem',
+                        border: '1px dashed var(--border)',
+                        borderRadius: '0.5rem',
+                        backgroundColor: 'var(--bg-app)',
+                        textAlign: 'left',
+                        fontSize: '0.75rem',
+                        lineHeight: '1.45',
+                        margin: '0.25rem 0'
+                      }}>
+                        <div style={{ fontWeight: 600, color: '#d97706', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          ⚠️ Chưa phát hiện VPN Tailscale!
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', color: 'var(--text-secondary)' }}>
+                          <div><b>Bước 1:</b> Tải & cài đặt Tailscale cho PC tại <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'underline' }}>tailscale.com/download</a>.</div>
+                          <div><b>Bước 2:</b> Cài đặt app <b>Tailscale</b> trên điện thoại từ Google Play Store hoặc App Store.</div>
+                          <div><b>Bước 3:</b> Đăng nhập <b>cùng một tài khoản</b> trên cả PC và Phone, sau đó bật VPN (Connect) trên cả 2 máy.</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '0.25rem', borderTop: '1px solid var(--border)', paddingTop: '0.4rem' }}>
+                            ℹ️ Sau khi bật, trang web sẽ tự động nhận diện và hiển thị mã QR Tailscale.
+                          </div>
+                        </div>
                       </div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                        {tunnelUrl}/pair-mobile
-                      </span>
-                    </>
-                  ) : (
-                    <div style={{
-                      width: '180px',
-                      height: '180px',
-                      border: '1px dashed var(--border)',
-                      borderRadius: '0.5rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '1rem',
-                      color: 'var(--text-secondary)',
-                      fontSize: '0.75rem',
-                      margin: '0.25rem 0'
-                    }}>
-                      Chưa bật Ngrok. Hãy cấu hình & bật Ngrok trong tab Cài đặt để kết nối ngoài mạng.
-                    </div>
+                    )
+                  )}
+
+                  {pairQrType === 'ngrok' && (
+                    tunnelActive && tunnelUrl ? (
+                      <>
+                        <div style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.5rem', margin: '0.25rem 0' }}>
+                          <QRCodeSVG value={`${tunnelUrl}/pair-mobile`} size={180} />
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                          {tunnelUrl}/pair-mobile
+                        </span>
+                      </>
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        padding: '1rem',
+                        border: '1px dashed var(--border)',
+                        borderRadius: '0.5rem',
+                        backgroundColor: 'var(--bg-app)',
+                        textAlign: 'center',
+                        fontSize: '0.75rem',
+                        lineHeight: '1.45',
+                        margin: '0.25rem 0',
+                        color: 'var(--text-secondary)'
+                      }}>
+                        ⚠️ <b>Đường truyền Ngrok đang tắt!</b>
+                        <p style={{ marginTop: '0.25rem', fontSize: '0.72rem' }}>
+                          Hãy vào tab <b>Cài đặt</b> để bật đường truyền Ngrok trước khi chia sẻ ngoài mạng.
+                        </p>
+                      </div>
+                    )
                   )}
                   
                   <button type="button" onClick={() => setShowPairModal(false)} className="btn btn-secondary" style={{ width: '100%', marginTop: '0.5rem' }}>
@@ -833,14 +939,14 @@ export default function DevicePanel({
                   flex: 1,
                   padding: '0.5rem',
                   border: 'none',
-                  fontSize: '0.8rem',
+                  fontSize: '0.75rem',
                   fontWeight: 600,
                   cursor: 'pointer',
                   backgroundColor: guideTab === 'pair' ? 'var(--primary-light)' : 'transparent',
                   color: guideTab === 'pair' ? 'var(--primary)' : 'var(--text-secondary)'
                 }}
               >
-                {t('devices.guide_tab_pair')}
+                1. Ghép đôi (Android 11+)
               </button>
               <button 
                 type="button"
@@ -849,20 +955,36 @@ export default function DevicePanel({
                   flex: 1,
                   padding: '0.5rem',
                   border: 'none',
-                  fontSize: '0.8rem',
+                  fontSize: '0.75rem',
                   fontWeight: 600,
                   cursor: 'pointer',
                   backgroundColor: guideTab === 'connect' ? 'var(--primary-light)' : 'transparent',
                   color: guideTab === 'connect' ? 'var(--primary)' : 'var(--text-secondary)'
                 }}
               >
-                {t('devices.guide_tab_connect')}
+                2. Kết nối không dây
+              </button>
+              <button 
+                type="button"
+                onClick={() => setGuideTab('tailscale')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem',
+                  border: 'none',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  backgroundColor: guideTab === 'tailscale' ? 'var(--primary-light)' : 'transparent',
+                  color: guideTab === 'tailscale' ? 'var(--primary)' : 'var(--text-secondary)'
+                }}
+              >
+                3. Ngoại mạng (Tailscale)
               </button>
             </div>
 
             {/* Guide Content (Scrollable) */}
             <div style={{ flexGrow: 1, overflowY: 'auto', paddingRight: '0.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.85rem', lineHeight: '1.5' }}>
-              {guideTab === 'pair' ? (
+              {guideTab === 'pair' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                   <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <div style={{ background: 'var(--primary)', color: '#fff', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 'bold', fontSize: '0.75rem', marginTop: '2px' }}>1</div>
@@ -900,7 +1022,9 @@ export default function DevicePanel({
                     </div>
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {guideTab === 'connect' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {/* Option 1: Already paired */}
                   <div>
@@ -938,6 +1062,62 @@ export default function DevicePanel({
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <span>•</span>
                         <span>{t('devices.guide_connect_step2_3')}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {guideTab === 'tailscale' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <h4 style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.375rem' }}>
+                      Tại sao cần dùng Tailscale VPN?
+                    </h4>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: '1.45' }}>
+                      Khi điện thoại dùng mạng di động (3G/4G/5G), Wi-Fi khác mạng PC, hoặc PC kết nối qua chia sẻ mạng (NAT của Mac Mini, v.v.), hai thiết bị sẽ <b>không thể nhìn thấy nhau</b>. Tailscale giúp tạo một đường truyền mạng ảo bảo mật chung (VPN) để PC kết nối trực tiếp đến điện thoại như trong cùng mạng LAN.
+                    </p>
+                  </div>
+
+                  <div style={{ height: '1px', backgroundColor: 'var(--border)' }}></div>
+
+                  <div>
+                    <h4 style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+                      Hướng dẫn cài đặt chi tiết 3 bước:
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                      <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <div style={{ background: 'var(--primary)', color: '#fff', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 'bold', fontSize: '0.75rem', marginTop: '2px' }}>1</div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Cài đặt Tailscale trên PC</div>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                            Tải Tailscale cho máy tính của bạn tại trang chủ <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'underline' }}>tailscale.com/download</a>. Sau đó mở phần mềm lên và đăng nhập tài khoản.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <div style={{ background: 'var(--primary)', color: '#fff', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 'bold', fontSize: '0.75rem', marginTop: '2px' }}>2</div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Cài đặt Tailscale trên Điện thoại</div>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                            Tìm và tải ứng dụng <b>Tailscale</b> trên cửa hàng Google Play Store (hoặc App Store). Đăng nhập bằng <b>cùng một tài khoản</b> mà bạn đã đăng nhập trên máy tính.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <div style={{ background: 'var(--primary)', color: '#fff', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 'bold', fontSize: '0.75rem', marginTop: '2px' }}>3</div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Bật VPN và lấy IP Kết nối</div>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                            Bật kết nối (gạt nút Connect) trên cả 2 máy. 
+                            <br />
+                            • Lúc này điện thoại sẽ có 1 địa chỉ IP mạng ảo (dạng <code style={{ color: 'var(--success)', fontWeight: 'bold' }}>100.x.y.z</code>).
+                            <br />
+                            • Bạn dùng tab <b>Pair on PC (Manual)</b> trên PC, nhập IP Tailscale này của điện thoại, Cổng ghép đôi và mã PIN hiển thị ở màn hình Wireless Debugging để ghép nối trực tiếp.
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

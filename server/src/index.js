@@ -6,11 +6,13 @@ const path = require('path');
 const os = require('os');
 
 const { PORT } = require('./config');
+const isPkg = typeof process.pkg !== 'undefined';
 const deviceRoutes = require('./routes/device.routes');
 const apkRoutes = require('./routes/apk.routes');
 const tunnelRoutes = require('./routes/tunnel.routes');
 const logcatSocket = require('./sockets/logcat.socket');
 const adbService = require('./services/adb.service');
+const downloadAdb = require('../scripts/download-adb');
 
 const app = express();
 const server = http.createServer(app);
@@ -29,19 +31,30 @@ app.use((req, res, next) => {
   next();
 });
 
-// Get local IP address(es)
+// Get local IP address(es) and detect Tailscale IP
 function getLocalIpAddresses() {
   const interfaces = os.networkInterfaces();
-  const addresses = [];
+  const lanIps = [];
+  let tailscaleIp = null;
+
   for (const k in interfaces) {
-    for (const k2 in interfaces[k]) {
-      const address = interfaces[k][k2];
+    for (const address of interfaces[k]) {
       if (address.family === 'IPv4' && !address.internal) {
-        addresses.push(address.address);
+        const ip = address.address;
+        
+        // Detect Tailscale IP: falls in CGNAT subnet 100.64.0.0/10 (starts with 100.64 to 100.127)
+        const parts = ip.split('.');
+        const first = parseInt(parts[0]);
+        const second = parseInt(parts[1]);
+        if (first === 100 && second >= 64 && second <= 127) {
+          tailscaleIp = ip;
+        } else {
+          lanIps.push(ip);
+        }
       }
     }
   }
-  return addresses;
+  return { lanIps, tailscaleIp };
 }
 
 // Config CORS
@@ -71,11 +84,13 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/apk', apkRoutes);
 app.use('/api/tunnel', tunnelRoutes);
 
-// Local IP endpoint so frontend knows the PC's LAN IP
+// Local network details endpoint
 app.get('/api/info', (req, res) => {
+  const { lanIps, tailscaleIp } = getLocalIpAddresses();
   res.json({
     success: true,
-    localIps: getLocalIpAddresses(),
+    localIps: lanIps,
+    tailscaleIp: tailscaleIp,
     port: PORT
   });
 });
@@ -89,22 +104,65 @@ app.get('/health', (req, res) => {
 logcatSocket(io);
 
 // Start Server
-server.listen(PORT, () => {
-  console.log(`=========================================`);
-  console.log(`ADB Management Server running on port ${PORT}`);
-  console.log(`Local Access: http://localhost:${PORT}`);
-  
-  const localIps = getLocalIpAddresses();
-  if (localIps.length > 0) {
-    console.log(`LAN Access urls:`);
-    localIps.forEach(ip => {
-      console.log(`  http://${ip}:${PORT}`);
-    });
+async function startApp() {
+  // Ensure ADB is setup before listening
+  try {
+    await downloadAdb();
+  } catch (err) {
+    console.error('Failed to initialize ADB Platform Tools:', err.message);
   }
-  console.log(`=========================================`);
 
-  // Auto connect paired wireless devices using mDNS
-  setInterval(() => {
-    adbService.autoConnectMdns().catch(() => {});
-  }, 5000);
-});
+  let portToUse = PORT;
+  
+  const startServer = (port) => {
+    server.listen(port, () => {
+      const actualPort = server.address().port;
+      console.log(`=========================================`);
+      console.log(`ADB Management Server running on port ${actualPort}`);
+      console.log(`Local Access: http://localhost:${actualPort}`);
+      
+      const { lanIps, tailscaleIp } = getLocalIpAddresses();
+      if (lanIps.length > 0) {
+        console.log(`LAN Access urls:`);
+        lanIps.forEach(ip => {
+          console.log(`  http://${ip}:${actualPort}`);
+        });
+      }
+      
+      if (tailscaleIp) {
+        console.log(`Tailscale Access url:`);
+        console.log(`  http://${tailscaleIp}:${actualPort}`);
+      }
+      
+      console.log(`=========================================`);
+
+      // Auto open browser if packaged
+      if (isPkg) {
+        const { exec } = require('child_process');
+        const url = `http://localhost:${actualPort}`;
+        const startCmd = process.platform === 'darwin' ? 'open' :
+                         process.platform === 'win32' ? 'start ""' : 'xdg-open';
+        exec(`${startCmd} "${url}"`);
+      }
+
+      // Auto connect paired wireless devices using mDNS
+      setInterval(() => {
+        adbService.autoConnectMdns().catch(() => {});
+      }, 5000);
+    });
+  };
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`Port ${portToUse} is in use, trying next port...`);
+      portToUse++;
+      startServer(portToUse);
+    } else {
+      console.error('Server error:', err.message);
+    }
+  });
+
+  startServer(portToUse);
+}
+
+startApp();
